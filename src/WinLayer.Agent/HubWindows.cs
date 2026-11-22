@@ -57,6 +57,22 @@ internal static class HubWindows
         exclusions.Split([',', ';', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Any(value => string.Equals(value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? value[..^4] : value, app, StringComparison.OrdinalIgnoreCase));
 
+    internal static Icon? WindowIcon(HubWindow window)
+    {
+        var handle = new IntPtr(window.Handle);
+        if (!IsSame(window))
+            return null;
+        SendMessageTimeoutW(handle, 0x007F, new IntPtr(2), IntPtr.Zero, 0x2, 25, out var image);
+        if (image == IntPtr.Zero)
+            image = GetClassLongPtrW(handle, -34);
+        if (image == IntPtr.Zero)
+            image = GetClassLongPtrW(handle, -14);
+        if (image == IntPtr.Zero)
+            return null;
+        using var borrowed = Icon.FromHandle(image);
+        return (Icon)borrowed.Clone();
+    }
+
     internal static bool IsSame(HubWindow window)
     {
         GetWindowThreadProcessId(new(window.Handle), out var pid);
@@ -104,6 +120,9 @@ internal static class HubWindows
     internal struct NativeRect { public int Left, Top, Right, Bottom; }
     private delegate bool WindowCallback(IntPtr hwnd, IntPtr parameter);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr SendMessageTimeoutW(IntPtr hwnd, uint msg, IntPtr wparam, IntPtr lparam,
+        uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll")] private static extern IntPtr GetClassLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);

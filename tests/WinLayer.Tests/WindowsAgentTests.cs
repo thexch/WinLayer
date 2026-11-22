@@ -127,6 +127,12 @@ public sealed class WindowsAgentTests
             Assert.IsNull(saved.Error);
             Assert.IsTrue(saved.Status?.Preferences.Hub?.Macros.Any(item => item.Name == macro.Name));
             Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Open))).Error);
+            var visibleDeadline = Stopwatch.StartNew();
+            while (FindWindowW(null, "WinLayer — Sélecteur de fenêtres") == IntPtr.Zero && visibleDeadline.Elapsed < TimeSpan.FromSeconds(6))
+                await Task.Delay(100, stop);
+            var visible = FindWindowW(null, "WinLayer — Sélecteur de fenêtres") != IntPtr.Zero;
+            var afterOpening = await LocalProtocol.SendAsync(new(Command.Status), stop);
+            Assert.IsTrue(visible, afterOpening.Status?.Hub?.Errors.GetValueOrDefault(HubTool.Switcher) ?? "Switcher window not found.");
             Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Stop))).Error);
 
             using var samples = CancellationTokenSource.CreateLinkedTokenSource(stop);
@@ -221,6 +227,9 @@ public sealed class WindowsAgentTests
         Assert.IsTrue(UnregisterHotKey(IntPtr.Zero, id));
         return true;
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern IntPtr FindWindowW(string? className, string title);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

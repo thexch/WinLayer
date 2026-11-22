@@ -18,6 +18,8 @@ internal sealed class WindowsHub : IDisposable
     private HubPreferences _preferences = new();
     private HubOverlay? _overlay;
     private HubTool? _overlayTool;
+    private HubTool? _pendingSwitcher;
+    private int _switcherRevision;
     private DecorativeOverlay? _taskbar;
     private string? _color;
     private string? _measurement;
@@ -110,8 +112,12 @@ internal sealed class WindowsHub : IDisposable
         var options = preferences.Get(tool);
         _preferences = preferences;
         _errors.Remove(tool);
-        if (!options.Enabled && _overlayTool == tool)
-            _overlay?.Close();
+        if (!options.Enabled)
+        {
+            CancelSwitcher(tool);
+            if (_overlayTool == tool)
+                _overlay?.Close();
+        }
         switch (tool)
         {
             case HubTool.Repeater:
@@ -178,6 +184,7 @@ internal sealed class WindowsHub : IDisposable
         if (tool == HubTool.Macro && pressed == options.Repeat.Emergency)
         {
             _macros.Stop();
+            CancelSwitcher(HubTool.Macro);
             if (_overlayTool == HubTool.Macro)
                 _overlay?.Close();
         }
@@ -228,6 +235,7 @@ internal sealed class WindowsHub : IDisposable
             case HubAction.Stop:
                 if (tool == HubTool.Macro) _macros.Stop();
                 if (tool == HubTool.Repeater) _repeat.Pause();
+                CancelSwitcher(tool);
                 if (_overlayTool == tool) _overlay?.Close();
                 break;
             case HubAction.Rearm:
@@ -235,7 +243,7 @@ internal sealed class WindowsHub : IDisposable
                 break;
             case HubAction.Play:
                 var macro = FindMacro(request.Value!) ?? throw new InvalidOperationException("La macro n’existe plus.");
-                ShowOverlay(tool, new WindowSwitcher(options, message => _errors[tool] = message, window => Play(window, macro)));
+                QueueSwitcher(tool, options, window => Play(window, macro));
                 break;
             case HubAction.PauseRecording:
                 _macros.Pause();
@@ -280,7 +288,7 @@ internal sealed class WindowsHub : IDisposable
         switch (tool)
         {
             case HubTool.Switcher:
-                ShowOverlay(tool, new WindowSwitcher(options, message => _errors[tool] = message));
+                QueueSwitcher(tool, options);
                 break;
             case HubTool.Picker:
             case HubTool.Ruler:
@@ -312,6 +320,51 @@ internal sealed class WindowsHub : IDisposable
                     _errors[tool] = "Placez d’abord la fenêtre à épingler au premier plan.";
                 break;
         }
+    }
+
+    private void QueueSwitcher(HubTool tool, HubOptions options, Action<HubWindow>? selected = null)
+    {
+        if (_pendingSwitcher is not null)
+        {
+            if (_pendingSwitcher == tool)
+                return;
+            throw new InvalidOperationException("Un sélecteur est déjà en cours d’ouverture.");
+        }
+        _overlay?.Close();
+        _pendingSwitcher = tool;
+        var revision = ++_switcherRevision;
+        _ = OpenSwitcherAsync();
+
+        async Task OpenSwitcherAsync()
+        {
+            try
+            {
+                var windows = await Task.Run(() => HubWindows.List(options.Exclusions)).WaitAsync(TimeSpan.FromSeconds(4));
+                if (!_disposed && revision == _switcherRevision && _preferences.Get(tool).Enabled)
+                    ShowOverlay(tool, new WindowSwitcher(options, windows, message => _errors[tool] = message, selected));
+            }
+            catch (Exception error)
+            {
+                if (!_disposed && revision == _switcherRevision)
+                {
+                    _errors[tool] = "Windows n’a pas pu énumérer ou afficher les fenêtres.";
+                    WindowsSettings.Log("Sélecteur de fenêtres.", error);
+                }
+            }
+            finally
+            {
+                if (revision == _switcherRevision)
+                    _pendingSwitcher = null;
+            }
+        }
+    }
+
+    private void CancelSwitcher(HubTool tool)
+    {
+        if (_pendingSwitcher != tool)
+            return;
+        _pendingSwitcher = null;
+        _switcherRevision++;
     }
 
     private void ShowOverlay(HubTool tool, HubOverlay overlay)

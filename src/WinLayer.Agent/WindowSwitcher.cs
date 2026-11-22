@@ -13,15 +13,17 @@ internal sealed class WindowSwitcher : HubOverlay
     private readonly Action<string> _feedback;
     private readonly Action<HubWindow>? _selected;
     private IntPtr _thumbnail;
+    private int _previewRevision;
 
-    public WindowSwitcher(HubOptions options, Action<string> feedback, Action<HubWindow>? selected = null)
+    public WindowSwitcher(HubOptions options, HubWindow[] windows, Action<string> feedback, Action<HubWindow>? selected = null)
     {
+        Text = "WinLayer — Sélecteur de fenêtres";
         AccessibleName = "Sélecteur de fenêtres";
         _feedback = feedback;
         _selected = selected;
         BackColor = Color.FromArgb(29, 31, 55);
         Padding = new Padding(18);
-        _windows = HubWindows.List(options.Exclusions);
+        _windows = windows;
         _list = new ListView
         {
             Dock = DockStyle.Fill, MultiSelect = false, HideSelection = false, FullRowSelect = true,
@@ -45,25 +47,14 @@ internal sealed class WindowSwitcher : HubOverlay
         Bounds = new(area.Left + (area.Width - width) / 2, area.Top + (area.Height - height) / 2, width, height);
         if (width < 600)
             _preview.Visible = false;
-        foreach (var window in _windows.DistinctBy(window => window.App))
-        {
-            try
-            {
-                using var process = System.Diagnostics.Process.GetProcessById(window.Pid);
-                if (process.MainModule?.FileName is { } path)
-                {
-                    using var icon = Icon.ExtractAssociatedIcon(path);
-                    if (icon is not null)
-                        _icons.Images.Add(window.App, icon);
-                }
-            }
-            catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
-            {
-                // Protected or closed applications still have a title and may be selected.
-            }
-        }
+        _icons.Images.Add("default", SystemIcons.Application);
         Filter();
-        Shown += (_, _) => { _search.Focus(); UpdatePreview(); };
+        Shown += (_, _) =>
+        {
+            _search.Focus();
+            UpdatePreview();
+            _ = LoadIconsAsync();
+        };
     }
 
     private void Filter()
@@ -75,7 +66,7 @@ internal sealed class WindowSwitcher : HubOverlay
             foreach (var window in _windows)
                 if (window.Title.Contains(_search.Text, StringComparison.CurrentCultureIgnoreCase) ||
                     window.App.Contains(_search.Text, StringComparison.CurrentCultureIgnoreCase))
-                    _list.Items.Add(new ListViewItem([window.Title, window.App]) { Tag = window, ImageKey = window.App });
+                    _list.Items.Add(new ListViewItem([window.Title, window.App]) { Tag = window, ImageKey = _icons.Images.ContainsKey(window.App) ? window.App : "default" });
             if (_list.Items.Count > 0)
                 _list.Items[0].Selected = true;
         }
@@ -113,14 +104,63 @@ internal sealed class WindowSwitcher : HubOverlay
         Close();
     }
 
-    private void UpdatePreview()
+    private async Task LoadIconsAsync()
     {
+        foreach (var window in _windows.DistinctBy(window => window.App).Take(32))
+        {
+            if (IsDisposed)
+                return;
+            try
+            {
+                using var icon = await Task.Run(() => HubWindows.WindowIcon(window));
+                if (IsDisposed)
+                    return;
+                if (icon is null)
+                    continue;
+                _ = _icons.Handle;
+                using var bitmap = icon.ToBitmap();
+                _icons.Images.Add(window.App, bitmap);
+                foreach (ListViewItem item in _list.Items)
+                    if (item.Tag is HubWindow entry && entry.App == window.App)
+                        item.ImageKey = window.App;
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // An app may close before its icon arrives.
+            }
+        }
+    }
+
+    private async void UpdatePreview()
+    {
+        var revision = ++_previewRevision;
         RemovePreview();
         if (!_preview.Visible || !IsHandleCreated || _list.SelectedItems.Count != 1 ||
-            _list.SelectedItems[0].Tag is not HubWindow window || !HubWindows.IsSame(window) ||
-            DwmRegisterThumbnail(Handle, new(window.Handle), out _thumbnail) != 0)
+            _list.SelectedItems[0].Tag is not HubWindow window)
             return;
+        var hwnd = Handle;
         var bounds = _preview.Bounds;
+        try
+        {
+            var preview = await Task.Run(() => RegisterThumbnail(hwnd, window, bounds));
+            if (IsDisposed || revision != _previewRevision)
+            {
+                if (preview != IntPtr.Zero)
+                    DwmUnregisterThumbnail(preview);
+                return;
+            }
+            _thumbnail = preview;
+        }
+        catch (Exception error)
+        {
+            WindowsSettings.Log("Miniature du sélecteur.", error);
+        }
+    }
+
+    private static IntPtr RegisterThumbnail(IntPtr hwnd, HubWindow window, Rectangle bounds)
+    {
+        if (!HubWindows.IsSame(window) || DwmRegisterThumbnail(hwnd, new(window.Handle), out var preview) != 0)
+            return IntPtr.Zero;
         var layout = new Thumbnail
         {
             Flags = 1 | 4 | 8,
@@ -128,15 +168,18 @@ internal sealed class WindowSwitcher : HubOverlay
             Opacity = 255,
             Visible = 1
         };
-        if (DwmUpdateThumbnailProperties(_thumbnail, in layout) != 0)
-            RemovePreview();
+        if (DwmUpdateThumbnailProperties(preview, in layout) == 0)
+            return preview;
+        DwmUnregisterThumbnail(preview);
+        return IntPtr.Zero;
     }
 
     private void RemovePreview()
     {
-        if (_thumbnail != IntPtr.Zero)
-            DwmUnregisterThumbnail(_thumbnail);
+        var previous = _thumbnail;
         _thumbnail = IntPtr.Zero;
+        if (previous != IntPtr.Zero)
+            _ = Task.Run(() => DwmUnregisterThumbnail(previous));
     }
 
     protected override void Dispose(bool disposing)
