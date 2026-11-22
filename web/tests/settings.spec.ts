@@ -116,6 +116,25 @@ async function capture(page: Page, name: string) {
 
 const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Réglages' })
 
+test('keyboard skip link clears the brand and moves focus to the content', async ({ page }) => {
+  await withAgent(page, status)
+  const shortcut = page.getByRole('link', { name: 'Aller au contenu' })
+  const brand = page.locator('.brand')
+  await expect(shortcut).toHaveCSS('clip-path', 'inset(50%)')
+  await expect.poll(() => brand.locator('img').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+
+  await page.keyboard.press('Tab')
+  await expect(shortcut).toBeFocused()
+  const brandBounds = await brand.boundingBox()
+  const shortcutBounds = await shortcut.boundingBox()
+  expect(brandBounds).not.toBeNull()
+  expect(shortcutBounds!.y).toBeGreaterThanOrEqual(brandBounds!.y + brandBounds!.height)
+
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('main')).toBeFocused()
+  await expect(shortcut).toHaveCSS('clip-path', 'inset(50%)')
+})
+
 test('settings report readiness and remain navigable while agent data are pending', async ({ page }) => {
   await withAgent(page, status, true)
   await expect(page.getByText('Connexion…', { exact: true })).toBeVisible()

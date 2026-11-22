@@ -11,6 +11,7 @@ import { NetworkPage, SystemPage } from './HubMonitor'
 import type { HubRequest } from './hub'
 import { Range, Switch } from './controls'
 import { useAgent } from './useAgent'
+import appIcon from '../../src/WinLayer.Agent/WinLayer.ico'
 
 const navigation = [
   { id: 'dashboard', label: 'Vue d’ensemble', Icon: LayoutGrid },
@@ -54,16 +55,21 @@ function Status({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'n
 
 function Brand() {
   return <div className="brand">
-    <span className="brand-mark" aria-hidden="true"><i /><i /></span>
+    <img className="brand-mark" src={appIcon} alt="" width={32} height={32} />
     <span>WinLayer</span>
   </div>
 }
 
-function Sidebar({ selection, go, connection, version }: {
+function Sidebar({ selection, go, connection, version, skipToMain }: {
   selection: Page; go: (page: Page) => void; connection: ReturnType<typeof useAgent>['connection']; version?: string
+  skipToMain: () => void
 }) {
   return <aside className="sidebar">
     <Brand />
+    <a className="skip-link" href="#main-content" onClick={(event) => {
+      event.preventDefault()
+      skipToMain()
+    }}>Aller au contenu</a>
     <nav aria-label="Réglages">
       {navigation.map(({ id, label, Icon }) =>
         <button type="button" key={id} aria-label={label} aria-current={selection === id ? 'page' : undefined}
@@ -305,9 +311,9 @@ export function App() {
   const Module = hubPage?.[0]
 
   return <>
-    <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); main.current?.focus() }}>Aller au contenu</a>
     <div className="shell">
-      <Sidebar selection={page} go={navigate} connection={connection} version={status?.version} />
+      <Sidebar selection={page} go={navigate} connection={connection} version={status?.version}
+        skipToMain={() => main.current?.focus()} />
       <main id="main-content" ref={main} tabIndex={-1}>
         <div className="workspace">
           {connection === 'offline' && <div className="notice"><CircleAlert size={17} aria-hidden="true" /> L’agent est indisponible. Nouvelle tentative automatique.</div>}
