@@ -9,7 +9,7 @@ Téléchargez `WinLayer-win-Setup.exe` depuis une [version stable de GitHub Rele
 ## Utiliser
 
 - Cliquez sur l’icône WinLayer près de l’horloge. Elle peut être dans les icônes masquées. Le menu donne accès aux réglages, à Device Battery, à l’état de l’agent et à **Quitter WinLayer**.
-- Activez **Device Battery** pour afficher les périphériques Bluetooth LE associés. Ajustez l’intervalle de secours et les alertes. Une lecture dépend de l’exposition du service standard de batterie par le périphérique et Windows.
+- Activez **Device Battery** pour suivre la batterie des périphériques Bluetooth LE compatibles et du **HyperX Cloud III Wireless via son dongle USB** à partir de la version 2.1.0. Allumez le casque puis sélectionnez **Actualiser** dans **Périphériques**. L’intervalle de secours et les alertes sont réglables.
 - Activez **Démarrer avec Windows** dans **Général** si vous le souhaitez. Le démarrage automatique ouvre uniquement l’agent.
 - Cherchez les nouvelles versions dans **Mises à jour**. L’installation demande une confirmation et redémarre WinLayer. Les préférences sont stockées dans `%LOCALAPPDATA%\WinLayerData\preferences.json`.
 

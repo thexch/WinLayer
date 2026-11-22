@@ -32,6 +32,22 @@ public sealed class WindowsAgentTests
                 Assert.AreEqual(migratedPreferences, firstStatus.Preferences);
             Assert.IsFalse(agent.HasExited);
 
+            var preferences = firstStatus.Preferences;
+            var enabled = await LocalProtocol.SendAsync(new(Command.Save, Preferences: preferences with
+            {
+                Battery = preferences.Battery with { Enabled = true }
+            }), timeout.Token);
+            Assert.IsNull(enabled.Error);
+            BatteryStatus? scan;
+            do
+            {
+                await Task.Delay(100, timeout.Token);
+                scan = (await LocalProtocol.SendAsync(new(Command.Status), timeout.Token)).Status?.Battery;
+            } while (scan?.UpdatedAt is null);
+            Assert.IsNull(scan.Error, "Both hardware providers must be able to enumerate on Windows.");
+            var disabledAgain = await LocalProtocol.SendAsync(new(Command.Save, Preferences: preferences), timeout.Token);
+            Assert.IsNull(disabledAgain.Error);
+
             using var duplicate = Process.Start(executable!, "--background")!;
             await duplicate.WaitForExitAsync(timeout.Token);
             Assert.AreEqual(0, duplicate.ExitCode);

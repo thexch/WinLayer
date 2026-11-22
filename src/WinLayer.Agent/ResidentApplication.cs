@@ -39,7 +39,7 @@ internal sealed class ResidentApplication : ApplicationContext
     public ResidentApplication(bool open, Page page, Stopwatch startup, bool measure)
     {
         _updateStatus = _updates.IsInstalled ? new(UpdateState.NotChecked) : new(UpdateState.Unavailable);
-        _battery = new(() => new WindowsBluetoothProvider(),
+        _battery = new([() => new WindowsBluetoothProvider(), () => new WindowsHyperXProvider()],
             status => _ui.Post(_ => SetBatteryStatus(status), null),
             device => _ui.Post(_ =>
             {
@@ -368,7 +368,7 @@ internal sealed class ResidentApplication : ApplicationContext
     {
         var count = _batteryStatus.Devices.Count(device => device.State == BatteryState.Available);
         var batterySummary = !_preferences.Battery.Enabled ? "Device Battery en veille" :
-            _batteryStatus.Error is not null ? "Bluetooth indisponible" :
+            _batteryStatus.Error is not null ? "Lecture de batterie indisponible" :
             $"{count} batterie(s) lisible(s)";
         _statusMenu.Text = $"Agent actif · {batterySummary}";
         _tray.Text = $"WinLayer · {batterySummary}";

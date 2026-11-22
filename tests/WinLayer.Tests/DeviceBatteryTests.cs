@@ -12,7 +12,7 @@ public sealed class DeviceBatteryTests
     {
         var providersCreated = 0;
         await using var module = new DeviceBatteryModule(
-            () => { providersCreated++; return new WaitingProvider(); },
+            [() => { providersCreated++; return new WaitingProvider(); }],
             _ => { }, _ => { }, _ => Assert.Fail("Unexpected error."));
 
         await module.ApplyAsync(new() { Enabled = false, RefreshMinutes = 20 });
@@ -27,7 +27,7 @@ public sealed class DeviceBatteryTests
         var first = new WaitingProvider();
         var second = new WaitingProvider();
         var calls = 0;
-        await using var module = new DeviceBatteryModule(() => ++calls == 1 ? first : second,
+        await using var module = new DeviceBatteryModule([() => ++calls == 1 ? first : second],
             _ => { }, _ => { }, _ => Assert.Fail("Unexpected error."));
 
         await module.ApplyAsync(new() { Enabled = true });
@@ -46,7 +46,7 @@ public sealed class DeviceBatteryTests
     public async Task ProviderEventsAndManualRefreshCoalesceIntoOneRead()
     {
         var provider = new EventProvider();
-        await using var module = new DeviceBatteryModule(() => provider, _ => { }, _ => { },
+        await using var module = new DeviceBatteryModule([() => provider], _ => { }, _ => { },
             _ => Assert.Fail("Unexpected error."));
 
         await module.ApplyAsync(new() { Enabled = true });
@@ -86,6 +86,37 @@ public sealed class DeviceBatteryTests
             [device with { State = BatteryState.Unknown }, device with { Percentage = -1 }], options).ToArray());
         Assert.IsEmpty(alerts.Observe([device], options with { Alerts = false }).ToArray());
         CollectionAssert.AreEqual(new[] { device }, alerts.Observe([device], options).ToArray());
+    }
+
+    [TestMethod]
+    public async Task FailingBluetoothSourcePreservesHyperXReading()
+    {
+        var device = new BatteryDevice("hyperx:receiver", HyperXCloudIIIProtocol.DeviceName, BatteryState.Available,
+            12, BatterySource.HyperXUsb);
+        var snapshot = new TaskCompletionSource<BatteryStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var notification = new TaskCompletionSource<BatteryDevice>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var module = new DeviceBatteryModule(
+            [() => new FixedProvider(null), () => new FixedProvider(device)],
+            status => { if (status.UpdatedAt.HasValue) snapshot.TrySetResult(status); },
+            reading => notification.TrySetResult(reading),
+            _ => { });
+
+        await module.ApplyAsync(new() { Enabled = true });
+        var result = await snapshot.Task.WaitAsync(deadline.Token);
+
+        Assert.AreEqual(device, result.Devices.Single());
+        Assert.IsNotNull(result.Error);
+        Assert.AreEqual(device, await notification.Task.WaitAsync(deadline.Token));
+    }
+
+    private sealed class FixedProvider(BatteryDevice? reading) : IBatteryProvider
+    {
+        public void Start(Action devicesChanged) { }
+        public Task<IReadOnlyList<BatteryDevice>> ReadAsync(CancellationToken cancellationToken) =>
+            reading is null ? throw new IOException("Test source unavailable.") :
+            Task.FromResult<IReadOnlyList<BatteryDevice>>([reading]);
+        public void Dispose() { }
     }
 
     private sealed class WaitingProvider : IBatteryProvider

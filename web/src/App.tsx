@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, BatteryCharging, BatteryLow, Bluetooth,
-  ChevronDown, CircleAlert, LayoutGrid, Monitor, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon,
+  ChevronDown, CircleAlert, Headphones, LayoutGrid, Monitor, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon,
 } from 'lucide-react'
 import type { AgentStatus, Appearance, BatteryDevice, BatteryOptions, Page, Preferences } from './bridge'
 import { Range, Switch } from './controls'
@@ -68,11 +68,13 @@ function BatteryReading({ device, threshold }: { device: BatteryDevice; threshol
     disconnected: 'Déconnecté',
     unsupported: 'Service de batterie non exposé',
   }[device.state]
+  const isUsb = device.source === 'hyperXUsb'
+  const Icon = isUsb ? Headphones : Bluetooth
   return <li className="device-row">
-    <span className="tile-icon"><Bluetooth size={20} aria-hidden="true" /></span>
+    <span className="tile-icon"><Icon size={20} aria-hidden="true" /></span>
     <div className="device-name">
       <strong>{device.name}</strong>
-      <span className="fine">{label}</span>
+      <span className="fine">{isUsb ? `Dongle USB 2,4 GHz · ${label}` : label}</span>
     </div>
     {level !== null && <div className={`device-reading ${level <= threshold ? 'reading-low' : ''}`}>
       <span className="reading-value mono">{level}<span> %</span></span>
@@ -83,21 +85,24 @@ function BatteryReading({ device, threshold }: { device: BatteryDevice; threshol
 
 function Readings({ status, limit }: { status?: AgentStatus; limit?: number }) {
   const battery = status?.battery
-  if (!status || !battery || !status.preferences.battery.enabled || battery.error || !battery.devices.length) {
+  if (!status || !battery || !status.preferences.battery.enabled || !battery.devices.length) {
     const message = !status ? 'Les données apparaîtront quand l’agent répondra.' :
       !status.preferences.battery.enabled ? 'Activez Device Battery pour afficher les niveaux de charge.' :
-      battery?.error ?? (battery?.updatedAt ? 'Aucun périphérique Bluetooth LE associé.' : 'Recherche des périphériques…')
+      battery?.error ?? (battery?.updatedAt ? 'Aucun périphérique compatible détecté.' : 'Recherche des périphériques…')
     return <div className="empty-state">
       <span className="tile-icon"><Bluetooth size={20} aria-hidden="true" /></span>
       <p>{message}</p>
     </div>
   }
 
-  return <ul className="device-list" aria-label="Lectures de batterie">
-    {battery.devices.slice(0, limit).map((device) =>
-      <BatteryReading key={device.id} device={device} threshold={status.preferences.battery.lowThreshold} />
-    )}
-  </ul>
+  return <>
+    {battery.error && <p className="fine compatibility">{battery.error}</p>}
+    <ul className="device-list" aria-label="Lectures de batterie">
+      {battery.devices.slice(0, limit).map((device) =>
+        <BatteryReading key={device.id} device={device} threshold={status.preferences.battery.lowThreshold} />
+      )}
+    </ul>
+  </>
 }
 
 function GlassLayers() {
@@ -121,7 +126,7 @@ function Dashboard({ status, go }: { status?: AgentStatus; go: (page: Page) => v
         </Status>
         <h2 id="module-title">Device Battery</h2>
         <p>{batteryEnabled && known > 0 ? `${known} niveau${known > 1 ? 'x' : ''} de charge disponible${known > 1 ? 's' : ''}.` :
-          'Suivez la charge de vos périphériques Bluetooth LE compatibles.'}</p>
+          'Suivez la charge de vos périphériques compatibles.'}</p>
         <button type="button" className="button hero-button" onClick={() => go('battery')}>
           Voir les périphériques <ArrowRight size={17} aria-hidden="true" />
         </button>
@@ -280,11 +285,11 @@ export function App() {
             </Header>
             <div className="battery-layout">
               <section aria-labelledby="paired-devices" className="readings-panel">
-                <div className="section-heading"><h2 id="paired-devices">Bluetooth LE</h2>
+                <div className="section-heading"><h2 id="paired-devices">Batteries</h2>
                   {status?.battery.updatedAt && <time className="mono fine" dateTime={status.battery.updatedAt}>Lecture à {readingTime.format(new Date(status.battery.updatedAt))}</time>}
                 </div>
                 <Readings status={status} />
-                <p className="fine compatibility">Les périphériques à dongle USB ne sont pas couverts par cette source.</p>
+                <p className="fine compatibility">Compatible avec le Bluetooth LE et le HyperX Cloud III Wireless via son dongle USB.</p>
               </section>
               <section aria-labelledby="battery-options" className="battery-panel">
                 <div className="section-heading"><h2 id="battery-options">Device Battery</h2><BatteryLow size={20} aria-hidden="true" /></div>

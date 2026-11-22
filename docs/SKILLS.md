@@ -6,6 +6,7 @@ La découverte a couvert les skills fournis par la session, le catalogue officie
 | --- | --- | --- |
 | `setup-local-sdk` | .NET, installé dans le dépôt | SDK .NET 10 isolé, sélection via `global.json`, archive officielle vérifiée par SHA-512. |
 | `csharp-expert` | .NET, installé dans le dépôt | Choix des spécialistes et conventions C# pour la séparation agent, interface et logique testable. |
+| `dotnet-pinvoke` | .NET, installé dans le dépôt | Signatures Windows HID, vérification de la taille des structures et gestion des handles natifs pour HyperX. |
 | `msbuild` | .NET, installé dans le dépôt | Projets SDK-style, ciblage Windows, compilation sans restauration redondante. |
 | `code-testing` et `code-testing-extensions` | .NET, installés dans le dépôt | Cas de persistance, données invalides, états et annulation du module. Extension .NET utilisée pour les commandes. |
 | `analyzing-dotnet-performance` | .NET, installé dans le dépôt | Relecture des chemins résidents, annulation, attente asynchrone et protocole de mesure. |

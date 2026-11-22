@@ -62,7 +62,7 @@ public sealed class SettingsBridgeTests
     [TestMethod]
     public void ReplyUsesCamelCaseAndStringEnumsForTheBrowser()
     {
-        var snapshot = new AgentStatus(new(), new([new("id", "Bluetooth", BatteryState.Available, 72)]),
+        var snapshot = new AgentStatus(new(), new([new("id", "HyperX", BatteryState.Available, 72, BatterySource.HyperXUsb)]),
             new(UpdateState.NotChecked), "2.0.0", null, Page.Battery, 3);
         using var document = JsonDocument.Parse(SettingsBridge.Write(19, new(snapshot)));
         var envelope = document.RootElement;
@@ -70,6 +70,8 @@ public sealed class SettingsBridgeTests
         Assert.AreEqual(19, envelope.GetProperty("id").GetInt32());
         Assert.AreEqual("battery", status.GetProperty("requestedPage").GetString());
         Assert.AreEqual("notChecked", status.GetProperty("updates").GetProperty("state").GetString());
-        Assert.AreEqual("available", status.GetProperty("battery").GetProperty("devices")[0].GetProperty("state").GetString());
+        var reading = status.GetProperty("battery").GetProperty("devices")[0];
+        Assert.AreEqual("available", reading.GetProperty("state").GetString());
+        Assert.AreEqual("hyperXUsb", reading.GetProperty("source").GetString());
     }
 }

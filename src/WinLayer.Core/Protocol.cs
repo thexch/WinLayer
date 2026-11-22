@@ -6,10 +6,12 @@ namespace WinLayer.Core;
 
 public enum Page { Dashboard, Battery, General, Updates }
 public enum Command { Status, OpenSettings, Save, RefreshBattery, CheckUpdates, InstallUpdate, Quit }
+public enum BatterySource { BluetoothLe, HyperXUsb }
 public enum BatteryState { Available, Unknown, Disconnected, Unsupported }
 public enum UpdateState { Unavailable, NotChecked, Current, Available, Error, Installing }
 
-public sealed record BatteryDevice(string Id, string Name, BatteryState State, int? Percentage = null);
+public sealed record BatteryDevice(string Id, string Name, BatteryState State, int? Percentage = null,
+    BatterySource Source = BatterySource.BluetoothLe);
 public sealed record BatteryStatus(IReadOnlyList<BatteryDevice> Devices, DateTimeOffset? UpdatedAt = null, string? Error = null);
 public sealed record UpdateStatus(UpdateState State, string? Version = null, string? Info = null);
 public sealed record AgentStatus(Preferences Preferences, BatteryStatus Battery, UpdateStatus Updates, string Version, string? Error, Page RequestedPage, long NavigationRevision);

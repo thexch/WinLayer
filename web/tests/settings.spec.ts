@@ -159,8 +159,8 @@ test('empty narrow view and offline recovery keep controls understandable', asyn
   empty.requestedPage = 'battery'
   empty.battery.devices = []
   await withAgent(page, empty)
-  await expect(page.getByText('Aucun périphérique Bluetooth LE associé.')).toBeVisible()
-  await expect(page.getByText('Les périphériques à dongle USB ne sont pas couverts par cette source.')).toBeVisible()
+  await expect(page.getByText('Aucun périphérique compatible détecté.')).toBeVisible()
+  await expect(page.getByText('Compatible avec le Bluetooth LE et le HyperX Cloud III Wireless via son dongle USB.')).toBeVisible()
   await capture(page, '05-etat-vide-fenetre-compacte.png')
   const horizontalOverflow = await page.locator('#main-content').evaluate((element) => element.scrollWidth > element.clientWidth)
   expect(horizontalOverflow).toBe(false)
@@ -184,4 +184,19 @@ test('failed save is visible and a later tray request changes the active page', 
     __testAgent.status.requestedPage = 'battery'
   })
   await expect(page.getByRole('heading', { level: 1, name: 'Périphériques' })).toBeVisible()
+})
+
+test('shows the HyperX USB battery even when another source is unavailable', async ({ page }) => {
+  const fixture = structuredClone(status)
+  fixture.requestedPage = 'battery'
+  fixture.battery.error = 'Une source de batterie est indisponible.'
+  fixture.battery.devices = [
+    { id: 'hyperx:receiver', name: 'HyperX Cloud III Wireless', source: 'hyperXUsb', state: 'available', percentage: 0 },
+    { id: 'hyperx:spare', name: 'HyperX déconnecté', source: 'hyperXUsb', state: 'disconnected', percentage: null },
+  ]
+  await withAgent(page, fixture)
+  await expect(page.getByText('Une source de batterie est indisponible.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Dongle USB 2,4 GHz · Déconnecté')).toBeVisible()
+  await expect(page.getByRole('meter', { name: 'Charge de HyperX Cloud III Wireless' })).toHaveAttribute('value', '0')
+  await expect(page.getByRole('meter')).toHaveCount(1)
 })

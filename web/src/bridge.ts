@@ -21,6 +21,7 @@ export interface BatteryDevice {
   name: string
   state: 'available' | 'unknown' | 'disconnected' | 'unsupported'
   percentage: number | null
+  source?: 'bluetoothLe' | 'hyperXUsb'
 }
 
 export interface AgentStatus {
