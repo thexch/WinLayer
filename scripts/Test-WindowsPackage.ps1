@@ -61,7 +61,17 @@ try {
         }
     }
 
-    dotnet test WinLayer.slnx -c Release --no-build --logger trx
+    try {
+        dotnet test WinLayer.slnx -c Release --no-build --logger trx
+    }
+    catch {
+        $agentLog = Join-Path $env:LOCALAPPDATA 'WinLayerData/agent.log'
+        if (Test-Path -LiteralPath $agentLog) { Get-Content -LiteralPath $agentLog -Tail 50 }
+        $eventFilter = @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-5); Level = 2 }
+        Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue | Where-Object Message -Like '*WinLayer*' |
+            Select-Object -First 5 | Format-List
+        throw
+    }
 
     # The renderer must leave the dedicated user-data folder when its host closes.
     $deadline = [DateTime]::UtcNow.AddSeconds(20)

@@ -99,9 +99,16 @@ public sealed class WindowsAgentTests
 
     private static async Task VerifyHubWhileSettingsClosedAsync(CancellationToken stop)
     {
-        Task<Response> Send(HubRequest request) => LocalProtocol.SendAsync(new(Command.Hub, Hub: request), stop);
+        async Task<Response> Send(HubRequest request)
+        {
+            using var operation = CancellationTokenSource.CreateLinkedTokenSource(stop);
+            operation.CancelAfter(TimeSpan.FromSeconds(8));
+            try { return await LocalProtocol.SendAsync(new(Command.Hub, Hub: request), operation.Token); }
+            catch (Exception error) { throw new InvalidOperationException($"Native hub operation {request.Tool}/{request.Action} failed.", error); }
+        }
         var options = Enum.GetValues<HubTool>().ToDictionary(tool => tool, tool => HubOptions.Default(tool) with { Enabled = true });
         var picker = options[HubTool.Picker];
+        var completed = false;
         try
         {
             foreach (var (tool, value) in options)
@@ -137,12 +144,16 @@ public sealed class WindowsAgentTests
             var processes = await Send(new(HubTool.System, HubAction.Processes));
             Assert.IsNull(processes.Error);
             Assert.IsTrue(processes.Status?.Hub?.Metrics?.Processes.Any(process => process.Pid == Environment.ProcessId));
+            completed = true;
         }
         finally
         {
-            await Send(new(HubTool.Macro, HubAction.DeleteMacro, Value: "Agent smoke"));
-            foreach (var (tool, value) in options.Reverse())
-                await Send(new(tool, HubAction.Configure, value with { Enabled = false }));
+            if (completed)
+            {
+                await Send(new(HubTool.Macro, HubAction.DeleteMacro, Value: "Agent smoke"));
+                foreach (var (tool, value) in options.Reverse())
+                    await Send(new(tool, HubAction.Configure, value with { Enabled = false }));
+            }
         }
         Assert.IsTrue(CanRegister(picker.Shortcut));
     }
