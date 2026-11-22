@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import type { AgentStatus, AutoClickerOptions, Command } from '../src/bridge'
+import type { HubStatus } from '../src/hub'
 
 const status: AgentStatus = {
   preferences: {
@@ -57,6 +58,19 @@ async function withAgent(page: Page, fixture: AgentStatus) {
           agent.status.autoClicker = { state: 'paused', error: null }
         if (command.action === 'rearmAutoClicker')
           agent.status.autoClicker = { state: 'idle', error: null }
+        if (command.action === 'hub') {
+          const request = command.hub
+          agent.status.preferences.hub ??= { tools: {}, macros: [], favorites: [], colors: [] }
+          const hub = agent.status.preferences.hub
+          if (request.action === 'configure') hub.tools[request.tool] = request.options
+          if (request.action === 'saveMacro') hub.macros = [...hub.macros.filter(macro => macro.name !== request.macro.name), request.macro]
+          if (request.action === 'deleteMacro') hub.macros = hub.macros.filter(macro => macro.name !== request.value)
+          if (request.action === 'color') hub.favorites = hub.favorites.includes(request.value)
+            ? hub.favorites.filter(color => color !== request.value) : [...hub.favorites, request.value]
+          if (request.action === 'endProcess' && agent.status.hub?.metrics) {
+            agent.status.hub.metrics.processes = agent.status.hub.metrics.processes.filter(process => process.pid !== request.pid)
+          }
+        }
         if (command.action === 'refreshBattery')
           agent.status.battery.updatedAt = new Date().toISOString()
         if (command.action === 'checkUpdates')
@@ -282,4 +296,98 @@ test('auto clicker saves settings, records keys safely, and reports conflicts an
   await expect(page.getByLabel('Activation', { exact: true })).toHaveValue('67')
   await page.getByRole('button', { name: 'Réarmer' }).click()
   await expect(page.getByText('Inactif', { exact: true })).toBeVisible()
+})
+
+const hubStatus: HubStatus = {
+  errors: {}, pinned: [], selectedColor: '#9458EE', measurement: '3 × 4 px · 5 px',
+  macroState: null, recording: [], repeater: { state: 'idle', error: null },
+  metrics: {
+    adapters: [{ id: 'ethernet', name: 'Ethernet', kind: 'Ethernet' }],
+    activeAdapter: 'ethernet', received: 2000000, sent: 700000,
+    history: [
+      { at: '2026-11-22T16:42:00Z', cpu: 20, ram: 40, down: 3_000, up: 9_000, gpu: null },
+      { at: '2026-11-22T16:42:03Z', cpu: 25, ram: 42, down: 12_000, up: 8_000, gpu: 15 },
+    ],
+    totalRam: 16_000_000_000, freeRam: 8_000_000_000, processor: 'Processeur de test', threads: 12, cores: 6,
+    cpuMHz: 3000, logicalCpu: [20, 30], disks: [{ name: 'C:', size: 512_000_000_000, free: 200_000_000_000 }],
+    gpuName: null, gpuMemory: null, gpuUsed: null, diskRead: null, diskWrite: null,
+    processes: [{ pid: 220, name: 'Processus de test', started: 1_800_000_000, ram: 10_000_000, cpu: 1.2, path: null }],
+  },
+}
+const hubFixture: AgentStatus = {
+  ...status, preferences: { ...status.preferences, autoClicker: clickerOptions, hub: {
+    tools: {}, macros: [], colors: ['#9458EE'], favorites: [],
+  } }, autoClicker: { state: 'idle', error: null }, hub: hubStatus,
+}
+
+test('hub exposes reversible desktop tools and distinct screen sub-tools', async ({ page }) => {
+  await withAgent(page, hubFixture)
+  const menu = sidebar(page)
+  await menu.getByRole('button', { name: 'Taskbar Studio' }).click()
+  await expect(page.getByLabel('Aperçu de la surcouche')).toBeVisible()
+  await page.getByRole('button', { name: 'Activer', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Désactiver', exact: true })).toBeVisible()
+  await page.getByLabel('Nom du style').fill('Violet')
+  await page.getByRole('button', { name: 'Mémoriser le style' }).click()
+  await page.getByRole('button', { name: 'Appliquer' }).click()
+  await expect(page.getByRole('button', { name: 'Violet', exact: true })).toBeVisible()
+  await capture(page, '10-taskbar-studio.png')
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+  await menu.getByRole('button', { name: 'Alt-Tab Customizer' }).click()
+  await page.getByLabel('Disposition').selectOption('cards')
+  await page.getByRole('button', { name: 'Activer', exact: true }).click()
+  await page.getByRole('button', { name: 'Ouvrir le sélecteur' }).click()
+  await expect(page.getByLabel('Disposition')).toHaveValue('cards')
+  await menu.getByRole('button', { name: 'Always on Top' }).click()
+  await expect(page.getByRole('heading', { name: 'Fenêtres épinglées' })).toBeVisible()
+  await menu.getByRole('button', { name: 'Screen Tools' }).click()
+  await page.getByRole('button', { name: 'Favori #9458EE' }).click()
+  await expect(page.getByRole('button', { name: 'Favori #9458EE' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Screen Ruler' }).click()
+  await expect(page.getByText('3 × 4 px · 5 px')).toBeVisible()
+  await page.getByLabel('Axe de mesure').selectOption('horizontal')
+  await capture(page, '11-screen-ruler.png')
+})
+
+test('automation hub preserves auto clicker and saves a bounded macro', async ({ page }) => {
+  await withAgent(page, hubFixture)
+  await sidebar(page).getByRole('button', { name: 'Auto Clicker' }).click()
+  await page.getByRole('button', { name: 'Key Repeater' }).click()
+  await expect(page.getByRole('heading', { name: 'Key Repeater' })).toBeVisible()
+  await page.getByLabel('Fréquence (répétitions/s)').fill('200')
+  await expect(page.getByText('5 ms par répétition')).toBeVisible()
+  await page.getByRole('button', { name: 'Activer', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Mettre en pause' })).toBeVisible()
+  await sidebar(page).getByRole('button', { name: 'Macro Recorder' }).click()
+  await page.getByLabel('Nom de la macro').fill('Démonstration')
+  await page.getByRole('button', { name: 'Ajouter un délai' }).click()
+  await page.getByLabel('Délai (ms)').fill('630')
+  await page.getByRole('button', { name: 'Enregistrer la macro', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Démonstration', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '1. Attendre · 630 ms' })).toBeVisible()
+  await capture(page, '12-macro-recorder.png')
+})
+
+test('monitoring displays real-shaped history and requires process termination confirmation', async ({ page }) => {
+  await withAgent(page, hubFixture)
+  await sidebar(page).getByRole('button', { name: 'Network Monitor' }).click()
+  await page.getByRole('button', { name: 'Activer', exact: true }).click()
+  await expect(page.getByRole('img', { name: 'Réception et Envoi' })).toBeVisible()
+  await page.getByLabel('Unité').selectOption('megabits')
+  await page.getByRole('button', { name: 'Appliquer' }).click()
+  await expect(page.getByText('0,1 Mb/s', { exact: true }).first()).toBeVisible()
+  await capture(page, '13-network-monitor.png')
+  await sidebar(page).getByRole('button', { name: 'System Tray Monitor' }).click()
+  await page.getByRole('button', { name: 'Activer', exact: true }).click()
+  await expect(page.getByText('Processeur de test')).toBeVisible()
+  await capture(page, '14-system-monitor.png')
+  await page.getByRole('button', { name: 'Processus', exact: true }).click()
+  await page.getByRole('button', { name: 'Terminer Processus de test, PID 220' }).click()
+  await expect(page.getByRole('group', { name: 'Confirmer la fermeture' })).toBeVisible()
+  await page.getByRole('button', { name: 'Annuler', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Terminer Processus de test, PID 220' })).toBeVisible()
+  await page.getByRole('button', { name: 'Terminer Processus de test, PID 220' }).click()
+  await page.getByRole('button', { name: 'Terminer maintenant' }).click()
+  await expect(page.getByRole('button', { name: 'Terminer Processus de test, PID 220' })).toHaveCount(0)
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
 })

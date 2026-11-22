@@ -7,6 +7,7 @@ namespace WinLayer.Core;
 public static class SettingsBridge
 {
     private const int MaximumMessageLength = 4096;
+    private const int MaximumHubMessageLength = 32_768;
     private static readonly JsonSerializerOptions Format = new(JsonSerializerDefaults.Web)
     {
         MaxDepth = 8,
@@ -20,7 +21,7 @@ public static class SettingsBridge
     {
         id = 0;
         request = null;
-        if (json.Length > MaximumMessageLength)
+        if (json.Length > MaximumHubMessageLength)
             return false;
 
         Message? message;
@@ -37,6 +38,16 @@ public static class SettingsBridge
             return false;
 
         id = message.Id;
+        if (message.Action == "hub")
+        {
+            if (message is not { Preferences: null, Version: null, ClickerOptions: null, View: null, Hub: { } hub } || !hub.IsValid())
+                return false;
+            request = new(Command.Hub, Hub: hub);
+            return true;
+        }
+        if (json.Length > MaximumMessageLength || message.Hub is not null || message.View is not null && message.Action != "status")
+            return false;
+
         if (message.Action == "saveAutoClicker")
         {
             if (message is not { Preferences: null, Version: null, ClickerOptions: { } clicker } || !clicker.IsValid())
@@ -52,7 +63,7 @@ public static class SettingsBridge
 
         request = message switch
         {
-            { Action: "status", Preferences: null, Version: null } => new(Command.Status),
+            { Action: "status", Preferences: null, Version: null } => new(Command.Status, message.View ?? Page.Dashboard),
             { Action: "pauseAutoClicker", Preferences: null, Version: null } => new(Command.PauseAutoClicker),
             { Action: "rearmAutoClicker", Preferences: null, Version: null } => new(Command.RearmAutoClicker),
             { Action: "refreshBattery", Preferences: null, Version: null } => new(Command.RefreshBattery),
@@ -69,7 +80,9 @@ public static class SettingsBridge
 
     public static string Write(int id, Response response) => JsonSerializer.Serialize(new { id, response }, Format);
 
-    private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version, AutoClickerOptions? ClickerOptions);
+    public static string WriteMacro(MacroPreset macro) => JsonSerializer.Serialize(macro, Format);
+
+    private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version, AutoClickerOptions? ClickerOptions, HubRequest? Hub, Page? View);
 
     private sealed record WebPreferences(Appearance? Appearance, bool? StartWithWindows,
         bool? AutomaticUpdateChecks, WebBattery? Battery, bool? BatteryTrayIcons)

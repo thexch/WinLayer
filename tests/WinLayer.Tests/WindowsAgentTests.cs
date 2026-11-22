@@ -18,10 +18,11 @@ public sealed class WindowsAgentTests
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(100));
         var updatePackage = Environment.GetEnvironmentVariable("WINLAYER_SMOKE_UPGRADE_PACKAGE");
+        var upgradeVersion = Environment.GetEnvironmentVariable("WINLAYER_SMOKE_UPGRADE_VERSION");
         Preferences? previousPreferences = null;
         Preferences? migratedPreferences = null;
         if (updatePackage is not null)
-            (previousPreferences, migratedPreferences) = await UpgradeFromV1Async(executable!, updatePackage, timeout.Token);
+            (previousPreferences, migratedPreferences) = await UpgradeAsync(executable!, updatePackage, upgradeVersion ?? "1.0.0", timeout.Token);
         using var agent = Process.Start(executable!, "--background")!;
         try
         {
@@ -62,6 +63,7 @@ public sealed class WindowsAgentTests
             await settings.WaitForExitAsync(timeout.Token);
             Assert.AreEqual(0, settings.ExitCode);
             await VerifyAutoClickerWhileSettingsClosedAsync(timeout.Token);
+            await VerifyHubWhileSettingsClosedAsync(timeout.Token);
             var afterClosing = await LocalProtocol.SendAsync(new(Command.Status), timeout.Token);
             Assert.AreEqual(version, afterClosing.Status?.Version);
             Assert.IsFalse(agent.HasExited);
@@ -93,6 +95,56 @@ public sealed class WindowsAgentTests
                 }
             }
         }
+    }
+
+    private static async Task VerifyHubWhileSettingsClosedAsync(CancellationToken stop)
+    {
+        Task<Response> Send(HubRequest request) => LocalProtocol.SendAsync(new(Command.Hub, Hub: request), stop);
+        var options = Enum.GetValues<HubTool>().ToDictionary(tool => tool, tool => HubOptions.Default(tool) with { Enabled = true });
+        var picker = options[HubTool.Picker];
+        try
+        {
+            foreach (var (tool, value) in options)
+            {
+                var response = await Send(new(tool, HubAction.Configure, value));
+                Assert.IsNull(response.Error, $"{tool}");
+                Assert.IsTrue(response.Status?.Preferences.Hub?.Get(tool).Enabled);
+            }
+            Assert.IsFalse(CanRegister(picker.Shortcut));
+            var conflict = await Send(new(HubTool.Ruler, HubAction.Configure, options[HubTool.Ruler] with { Shortcut = picker.Shortcut }));
+            Assert.IsNotNull(conflict.Error);
+            Assert.AreEqual(options[HubTool.Ruler].Shortcut, conflict.Status?.Preferences.Hub?.Get(HubTool.Ruler).Shortcut);
+
+            var macro = new MacroPreset("Agent smoke", [new(MacroKind.Wait, 100)]);
+            var saved = await Send(new(HubTool.Macro, HubAction.SaveMacro, Macro: macro));
+            Assert.IsNull(saved.Error);
+            Assert.IsTrue(saved.Status?.Preferences.Hub?.Macros.Any(item => item.Name == macro.Name));
+            Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Open))).Error);
+            Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Stop))).Error);
+
+            using var samples = CancellationTokenSource.CreateLinkedTokenSource(stop);
+            samples.CancelAfter(TimeSpan.FromSeconds(12));
+            HubMetrics? metrics;
+            do
+            {
+                await Task.Delay(250, samples.Token);
+                var response = await LocalProtocol.SendAsync(new(Command.Status, Page.System), samples.Token);
+                metrics = response.Status?.Hub?.Metrics;
+            } while (metrics is null || metrics.TotalRam is null || !metrics.History.Any(sample => sample.Cpu is not null));
+            Assert.IsTrue(metrics.TotalRam > 0);
+            Assert.IsTrue(metrics.FreeRam > 0);
+            Assert.IsTrue(metrics.Threads > 0);
+            var processes = await Send(new(HubTool.System, HubAction.Processes));
+            Assert.IsNull(processes.Error);
+            Assert.IsTrue(processes.Status?.Hub?.Metrics?.Processes.Any(process => process.Pid == Environment.ProcessId));
+        }
+        finally
+        {
+            await Send(new(HubTool.Macro, HubAction.DeleteMacro, Value: "Agent smoke"));
+            foreach (var (tool, value) in options.Reverse())
+                await Send(new(tool, HubAction.Configure, value with { Enabled = false }));
+        }
+        Assert.IsTrue(CanRegister(picker.Shortcut));
     }
 
     private static async Task VerifyAutoClickerWhileSettingsClosedAsync(CancellationToken stop)
@@ -167,13 +219,13 @@ public sealed class WindowsAgentTests
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool UnregisterHotKey(IntPtr window, int id);
 
-    private static async Task<(Preferences Original, Preferences Migrated)> UpgradeFromV1Async(
-        string executable, string updatePackage, CancellationToken stop)
+    private static async Task<(Preferences Original, Preferences Migrated)> UpgradeAsync(
+        string executable, string updatePackage, string oldVersion, CancellationToken stop)
     {
         using var oldAgent = Process.Start(executable, "--background")!;
         var previous = await AwaitAgentAsync(oldAgent, stop);
         Assert.IsNotNull(previous);
-        Assert.AreEqual("1.0.0", previous.Version);
+        Assert.AreEqual(oldVersion, previous.Version);
         var migrated = previous.Preferences with
         {
             Appearance = Appearance.Dark,
@@ -184,6 +236,13 @@ public sealed class WindowsAgentTests
         var save = await LocalProtocol.SendAsync(new(Command.Save, Preferences: migrated), stop);
         Assert.IsNull(save.Error);
         Assert.AreEqual(migrated, save.Status?.Preferences);
+        if (oldVersion == "2.4.0")
+        {
+            var clicker = migrated.AutoClicker with { Cps = 77 };
+            var savedClicker = await LocalProtocol.SendAsync(new(Command.SaveAutoClicker, ClickerOptions: clicker), stop);
+            Assert.IsNull(savedClicker.Error);
+            migrated = migrated with { AutoClicker = clicker };
+        }
         var quit = await LocalProtocol.SendAsync(new(Command.Quit), stop);
         Assert.IsNull(quit.Error);
         await oldAgent.WaitForExitAsync(stop);

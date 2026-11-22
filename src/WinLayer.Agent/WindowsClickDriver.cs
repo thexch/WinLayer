@@ -11,13 +11,15 @@ internal sealed partial class WindowsClickDriver : IAutoClickerDriver, IDisposab
 {
     private readonly AutoClickerOptions _options;
     private readonly object _sendGate;
+    private readonly HubOptions? _keyboard;
     private readonly WaitHandle _timer;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private WaitHandle[]? _waitHandles;
 
-    public WindowsClickDriver(AutoClickerOptions options, object sendGate)
+    public WindowsClickDriver(AutoClickerOptions options, object sendGate, HubOptions? keyboard = null)
     {
         _options = options;
+        _keyboard = keyboard;
         _sendGate = sendGate;
         _timer = new ClickTimer();
     }
@@ -40,6 +42,21 @@ internal sealed partial class WindowsClickDriver : IAutoClickerDriver, IDisposab
     }
 
     public unsafe void Click(AutoClickerOptions options, CancellationToken cancellation)
+    {
+        if (_keyboard is { } keyboard)
+        {
+            lock (_sendGate)
+                if (!cancellation.IsCancellationRequested && CanClick)
+                    SendKey(keyboard.OutputKey, keyboard.OutputModifiers);
+            return;
+        }
+
+        lock (_sendGate)
+            if (!cancellation.IsCancellationRequested && CanClick)
+                SendClick(options, cancellation);
+    }
+
+    public static unsafe void SendClick(AutoClickerOptions options, CancellationToken cancellation)
     {
         const uint move = 0x0001;
         const uint absolute = 0x8000;
@@ -72,24 +89,55 @@ internal sealed partial class WindowsClickDriver : IAutoClickerDriver, IDisposab
             inputs[count++] = new Input(up);
         }
 
-        lock (_sendGate)
+        if (cancellation.IsCancellationRequested)
+            return;
+        var sent = SendInput((uint)count, inputs, sizeof(Input));
+        if (sent == count)
+            return;
+
+        var nativeError = Marshal.GetLastPInvokeError();
+        var buttonEvents = sent - (options.Position == ClickPosition.Fixed && sent > 0 ? 1u : 0u);
+        if (buttonEvents % 2 != 0)
         {
-            if (cancellation.IsCancellationRequested || !CanClick)
-                return;
-
-            var sent = SendInput((uint)count, inputs, sizeof(Input));
-            if (sent == count)
-                return;
-
-            var nativeError = Marshal.GetLastPInvokeError();
-            var buttonEvents = sent - (options.Position == ClickPosition.Fixed && sent > 0 ? 1u : 0u);
-            if (buttonEvents % 2 != 0)
-            {
-                var release = new Input(up);
-                SendInput(1, &release, sizeof(Input));
-            }
-            throw new Win32Exception(nativeError, "SendInput failed or inserted only part of the click sequence.");
+            var release = new Input(up);
+            SendInput(1, &release, sizeof(Input));
         }
+        throw new Win32Exception(nativeError, "SendInput failed or inserted only part of the click sequence.");
+    }
+
+    public static unsafe void SendKey(int key, int modifiers)
+    {
+        var input = stackalloc Input[8];
+        var count = 0;
+        if ((modifiers & 2) != 0 && !IsDown(0x11)) input[count++] = Input.Key(0x11, false);
+        if ((modifiers & 1) != 0 && !IsDown(0x12)) input[count++] = Input.Key(0x12, false);
+        if ((modifiers & 4) != 0 && !IsDown(0x10)) input[count++] = Input.Key(0x10, false);
+        var held = count;
+        input[count++] = Input.Key(key, false);
+        input[count++] = Input.Key(key, true);
+        for (var i = held - 1; i >= 0; i--)
+            input[count++] = Input.Key(input[i].VirtualKey, true);
+        var sent = SendInput((uint)count, input, sizeof(Input));
+        if (sent == count)
+            return;
+        var error = Marshal.GetLastPInvokeError();
+        var released = 0;
+        for (var i = 0; i < Math.Min(held + 1, (int)sent); i++)
+            input[released++] = Input.Key(input[i].VirtualKey, true);
+        if (released > 0)
+            SendInput((uint)released, input, sizeof(Input));
+        throw new Win32Exception(error, "Keyboard SendInput failed.");
+    }
+
+    public static unsafe void MovePointer(Point point)
+    {
+        var bounds = SystemInformation.VirtualScreen;
+        if (MonitorFromPoint(point, 0) == IntPtr.Zero || !bounds.Contains(point))
+            throw new ArgumentOutOfRangeException(nameof(point));
+        var input = new Input(0xC001, NormalizeAbsolute(point.X, bounds.Left, bounds.Width),
+            NormalizeAbsolute(point.Y, bounds.Top, bounds.Height));
+        if (SendInput(1, &input, sizeof(Input)) != 1)
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "Pointer movement failed.");
     }
 
     public void Dispose() => _timer.Dispose();
@@ -121,12 +169,36 @@ internal sealed partial class WindowsClickDriver : IAutoClickerDriver, IDisposab
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private readonly struct Input(uint flags, int x = 0, int y = 0)
+    private struct Input
     {
-        // INPUT_MOUSE = 0. MOUSEINPUT is the largest member of the native INPUT union.
-        private readonly uint _type = 0;
-        private readonly MouseInput _mouse = new(x, y, flags);
+        private uint _type;
+        private InputData _data;
+
+        public Input(uint flags, int x = 0, int y = 0)
+        {
+            _type = 0;
+            _data.Mouse = new(x, y, flags);
+        }
+
+        public static Input Key(int key, bool up) => new()
+        {
+            _type = 1,
+            _data = new() { Keyboard = new((ushort)key, 0,
+                (up ? 2u : 0u) | (key is >= 0x21 and <= 0x28 or 0x2E ? 1u : 0u), 0, 0) }
+        };
+
+        public readonly int VirtualKey => _data.Keyboard.VirtualKey;
     }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputData
+    {
+        [FieldOffset(0)] public MouseInput Mouse;
+        [FieldOffset(0)] public KeyboardInput Keyboard;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct KeyboardInput(ushort VirtualKey, ushort Scan, uint Flags, uint Time, nuint Extra);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct MouseInput(int x, int y, uint flags)

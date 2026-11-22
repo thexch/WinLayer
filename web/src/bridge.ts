@@ -1,5 +1,7 @@
+import type { HubPreferences, HubRequest, HubStatus } from './hub'
+
 // This web contract is distinct from the resident agent's V1 named-pipe format.
-export type Page = 'dashboard' | 'battery' | 'general' | 'updates' | 'autoClicker'
+export type Page = 'dashboard' | 'battery' | 'general' | 'updates' | 'autoClicker' | 'taskbar' | 'switcher' | 'macro' | 'screen' | 'network' | 'system' | 'pin'
 export type Appearance = 'system' | 'light' | 'dark'
 
 export interface BatteryOptions {
@@ -38,6 +40,7 @@ export interface Preferences {
   batteryTrayIcons?: boolean
   battery: BatteryOptions
   autoClicker?: AutoClickerOptions
+  hub?: HubPreferences | null
 }
 
 export interface BatteryDevice {
@@ -61,13 +64,16 @@ export interface AgentStatus {
   requestedPage: Page
   navigationRevision: number
   autoClicker?: AutoClickerStatus
+  hub?: HubStatus
 }
 
 export type Command =
-  | { action: 'ready' | 'status' | 'refreshBattery' | 'checkUpdates' | 'pauseAutoClicker' | 'rearmAutoClicker' }
+  | { action: 'ready' | 'refreshBattery' | 'checkUpdates' | 'pauseAutoClicker' | 'rearmAutoClicker' }
+  | { action: 'status'; view?: Page }
   | { action: 'saveAutoClicker'; clickerOptions: AutoClickerOptions }
   | { action: 'save'; preferences: Preferences }
   | { action: 'installUpdate'; version: string }
+  | { action: 'hub'; hub: HubRequest }
 
 export interface Response {
   status: AgentStatus | null
@@ -100,7 +106,7 @@ function exchange(command: Command, reportProgress?: (value: number) => void): P
     return Promise.resolve({ status: null, error: 'Ouvrez les réglages depuis l’application WinLayer.' })
 
   const id = ++nextId
-  const timeoutMs = command.action === 'installUpdate' ? 340_000 : command.action === 'checkUpdates' ? 125_000 : 10_000
+  const timeoutMs = command.action === 'installUpdate' ? 340_000 : command.action === 'checkUpdates' ? 125_000 : command.action === 'hub' && command.hub.action === 'exportMacro' ? 130_000 : 10_000
 
   return new Promise((resolve) => {
     const finish = (response: Response) => {

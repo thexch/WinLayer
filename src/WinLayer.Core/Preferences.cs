@@ -28,10 +28,13 @@ public sealed record Preferences
     public BatteryOptions Battery { get; init; } = new();
     public AutoClickerOptions AutoClicker { get; init; } = new();
 
+    public HubPreferences? Hub { get; init; }
+
     public Preferences Normalize() => this with
     {
         Appearance = Enum.IsDefined(Appearance) ? Appearance : Appearance.System,
         Battery = (Battery ?? new()).Normalize(),
+        Hub = Hub?.Normalize(),
         AutoClicker = AutoClicker is { } options && options.IsValid() ? options : new()
     };
 }

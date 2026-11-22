@@ -3,6 +3,7 @@ import { send, type AgentStatus, type Command, type Page } from './bridge'
 
 export function useAgent() {
   const [status, setStatus] = useState<AgentStatus>()
+  const view = useRef<Page>('dashboard')
   const [page, setPage] = useState<Page>('dashboard')
   const [connection, setConnection] = useState<'opening' | 'connected' | 'offline'>('opening')
   const [feedback, setFeedback] = useState('')
@@ -15,6 +16,7 @@ export function useAgent() {
   function accept(next: AgentStatus) {
     if (revision.current !== next.navigationRevision) {
       revision.current = next.navigationRevision
+      view.current = next.requestedPage
       setPage(next.requestedPage)
     }
     if (refreshStarted.current !== null && next.battery.updatedAt &&
@@ -33,7 +35,7 @@ export function useAgent() {
 
     async function poll() {
       if (!active.current) {
-        const response = await send({ action: 'status' })
+        const response = await send({ action: 'status', view: view.current })
         if (disposed) return
         if (response.status) accept(response.status)
         else setConnection('offline')
@@ -78,6 +80,7 @@ export function useAgent() {
   }
 
   function go(next: Page) {
+    view.current = next
     setPage(next)
     if (!active.current) setFeedback('')
   }

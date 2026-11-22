@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string] $Version, [switch] $UpgradeFromV1)
+param([Parameter(Mandatory)][string] $Version, [switch] $UpgradeFromV1, [switch] $UpgradeFromV24)
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
@@ -10,18 +10,26 @@ try {
     }
 
     $env:WINLAYER_SMOKE_UPGRADE_PACKAGE = $null
+    $env:WINLAYER_SMOKE_UPGRADE_VERSION = $null
     $logName = 'setup-smoke.log'
-    if ($UpgradeFromV1) {
-        $v1 = Join-Path (Get-Location).Path 'artifacts/WinLayer-1.0.0-Setup.exe'
-        Invoke-WebRequest 'https://github.com/thexch/WinLayer/releases/download/v1.0.0/WinLayer-win-Setup.exe' -OutFile $v1
-        if ((Get-FileHash -LiteralPath $v1).Hash -ne '2030D5E68AC987DA64DEA39ED97BC01BABCE5FDFe7F86012CC164EEC001405D7') {
-            throw 'The archived 1.0.0 installer SHA-256 does not match.'
+    if ($UpgradeFromV1 -or $UpgradeFromV24) {
+        $source = if ($UpgradeFromV24) { '2.4.0' } else { '1.0.0' }
+        $sourceHash = if ($UpgradeFromV24) {
+            '3D077EDAC6DC847C30E86DFBE7803CED08C65D6FACD01B6DC4E2D0BE8C0CFCE5'
+        } else {
+            '2030D5E68AC987DA64DEA39ED97BC01BABCE5FDFe7F86012CC164EEC001405D7'
         }
-        $setup = Get-Item -LiteralPath $v1
+        $archive = Join-Path (Get-Location).Path "artifacts/WinLayer-$source-Setup.exe"
+        Invoke-WebRequest "https://github.com/thexch/WinLayer/releases/download/v$source/WinLayer-win-Setup.exe" -OutFile $archive
+        if ((Get-FileHash -LiteralPath $archive).Hash -ne $sourceHash) {
+            throw "The archived $source installer SHA-256 does not match."
+        }
+        $setup = Get-Item -LiteralPath $archive
         $full = Get-ChildItem -LiteralPath 'artifacts/releases' -Filter '*-full.nupkg'
         if (@($full).Count -ne 1) { throw 'Expected exactly one update package.' }
         $env:WINLAYER_SMOKE_UPGRADE_PACKAGE = $full.FullName
-        $logName = 'setup-upgrade-smoke.log'
+        $env:WINLAYER_SMOKE_UPGRADE_VERSION = $source
+        $logName = "setup-upgrade-$source-smoke.log"
     }
 
     $installTo = Join-Path ([IO.Path]::GetTempPath()) "WinLayer-smoke-$([Guid]::NewGuid().ToString('N'))"

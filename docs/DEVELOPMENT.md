@@ -68,3 +68,25 @@ Activer le module entre ces mesures et fermer les réglages avant chaque échant
 5. Essayer des coordonnées négatives sur un deuxième écran, à deux échelles DPI. Essayer un point hors écran et vérifier la mise en pause avec un message. Redémarrer WinLayer et vérifier les réglages sauvegardés, avec un module inactif tant que le raccourci n’a pas été utilisé.
 
 Les tests automatisés contrôlent la cadence sur une horloge déterministe, le nombre et la durée, les transitions des raccourcis et l’annulation. Le test du paquet vérifie la réservation Windows et la libération des raccourcis alors que WebView2 est fermé. Les clics sur le bureau et la réception de messages par la fenêtre cible sont à vérifier dans une session Windows interactive.
+
+## Validation du Windows Hub
+
+1. **Taskbar Studio**. Comparer l’aperçu et le liseré, tester barre en masquage automatique, déplacement après changement d’affichage, redémarrage d’Explorer, restauration et clics sur la barre.
+2. **Alt-Tab Customizer et Always on Top**. Vérifier les fenêtres minimisées, réduites à l’icône, fermées pendant la sélection et les exclusions. Tester Tab, flèches, Entrée et Échap. Vérifier les contours et restaurer plusieurs fenêtres en désactivant le module.
+3. **Macro Recorder et Key Repeater**. Dans un éditeur de test, vérifier clavier, mouvements et clics reçus. Tester enregistrement, pause, exclusion, import/export, relecture limitée, perte de focus, raccourcis conflictuels et arrêt d’urgence. Tester le répétiteur en Bascule et Maintien, puis à 1, 25 et 200 répétitions/s après fermeture de WebView2. Comparer les événements reçus.
+4. **Screen Tools**. Prélever une couleur SDR connue et mesurer un rectangle de référence sur un puis deux écrans. Tester les écrans à 100 %/150 %, les coordonnées négatives, Échap, le presse-papiers et le contenu protégé ou HDR.
+5. **Monitoring**. Comparer débits, occupation et mémoire au Gestionnaire des tâches sur le même intervalle. Tester réseau déconnecté, compteur manquant, sélection d’adaptateur, alertes, téléchargement contrôlé, processus terminable et annulation. Vérifier qu’aucun capteur inaccessible n’affiche de valeur estimée.
+6. **Mise à jour**. Installer 2.4.0, modifier les réglages d’Auto Clicker, puis installer un paquet de test du Hub. Vérifier les valeurs, la fermeture de WebView2 et l’arrêt propre de l’agent. La CI couvre aussi la mise à jour locale depuis les installateurs publiés 1.0.0 et 2.4.0.
+
+### Comparer les coûts au repos
+
+Utiliser le même Windows, poste, plan d’alimentation et ensemble de périphériques. Pour chaque scénario, relever cinq démarrages avec `--measure-startup`, attendre une minute puis exécuter `./scripts/Measure-WinLayer.ps1 -AgentPid $agent.Id -Seconds 360 -Scenario '<scénario>'`. Répéter trois fois.
+
+| Scénario | Conditions |
+| --- | --- |
+| Référence | WinLayer 2.4.0, réglages fermés, outils désactivés |
+| Nouveaux outils désactivés | Paquet Hub, mêmes conditions |
+| Outils courants | Battery, raccourcis et Always on Top activés, réglages fermés |
+| Monitoring | Mesurer à 2 s avec les deux vues ouvertes à tour de rôle, avec le seul débit réseau et les indicateurs choisis en tâche de fond, puis après désactivation |
+
+Consigner le CPU d’un cœur, working set, mémoire privée, nombre de handles, démarrage et présence du processus de réglages. Capturer aussi un profil WPR lors du monitoring si une différence doit être expliquée. La validation des mesures, du HDR et des combinaisons d’écrans reste à faire sur un Windows physique.

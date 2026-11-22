@@ -99,7 +99,8 @@ internal sealed class SettingsWindow : Form
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
             core.WebResourceRequested += (_, args) =>
             {
-                if (!IsLocal(args.Request.Uri) || args.Request.Method != "GET")
+                if ((!IsLocal(args.Request.Uri) && !(args.ResourceContext == CoreWebView2WebResourceContext.Image &&
+                    args.Request.Uri.StartsWith("data:image/png;base64,", StringComparison.Ordinal))) || args.Request.Method != "GET")
                     args.Response = environment.CreateWebResourceResponse(null, 403, "Forbidden", "");
             };
             core.WebMessageReceived += Receive;
@@ -162,6 +163,7 @@ internal sealed class SettingsWindow : Form
             {
                 Command.InstallUpdate => TimeSpan.FromMinutes(5.5),
                 Command.CheckUpdates => TimeSpan.FromMinutes(2),
+                Command.Hub when request.Hub?.Action == HubAction.ExportMacro => TimeSpan.FromMinutes(2),
                 _ => TimeSpan.FromSeconds(8)
             });
 

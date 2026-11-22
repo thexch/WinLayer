@@ -13,3 +13,6 @@
 - Réserver les tags stables aux commits validés. Suivre `docs/RELEASING.md` pour les essais de l’installation et des mises à jour.
 
 - Pour chaque mise à jour de l’application livrée à Théo, publier directement une version stable après la réussite de la CI sur `main`. Vérifier que le workflow de release a réussi et que le flux Velopack public propose la version, pour permettre l’installation depuis **Mises à jour** dans WinLayer.
+
+- Pour le Windows Hub, réutiliser `GlobalHotkeys`, les primitives de fenêtre et d’automatisation, `HubMonitoring` et `HubRequest`. Vérifier les collisions avec Auto Clicker et garder la capture de macro explicite et confinée à la fenêtre dédiée. Décrire les compteurs absents et les effets de surcouche comme tels.
+- S’appuyer sur la matrice [Windows interactive](docs/DEVELOPMENT.md#validation-du-windows-hub) pour les changements de bureau et les automatismes. Distinguer les résultats du poste Windows des tests de compilation, de migration et de Chromium.

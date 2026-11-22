@@ -19,6 +19,16 @@ Activez le module dans **Auto Clicker**, puis choisissez le type de clic, la cad
 
 Certaines applications filtrent les entrées simulées. Consultez les limites de Windows et le protocole de vérification. [Modules](docs/MODULES.md) · [Validation sur Windows](docs/DEVELOPMENT.md#vérifier-auto-clicker-sur-windows)
 
+### Windows Hub
+
+- **Taskbar Studio** applique un liseré à couleur et opacité réglables. Enregistrez des styles et restaurez la barre en désactivant la surcouche.
+- **Alt-Tab Customizer** ouvre un sélecteur indépendant avec aperçu, recherche et exclusions. **Always on Top** épingle la fenêtre active et peut signaler l’épinglage par un contour.
+- **Key Repeater** se trouve dans **Auto Clicker**. **Macro Recorder** enregistre dans une fenêtre dédiée, édite les étapes et rejoue les séquences enregistrées vers une fenêtre choisie.
+- **Screen Tools** regroupe la pipette avec historique et palettes et la règle en pixels sur le bureau.
+- **Network Monitor** affiche les débits mesurés par interface. **System Tray Monitor** affiche les compteurs disponibles de Windows, les volumes et les processus et propose des indicateurs de notification.
+
+Les nouveaux modules sont désactivés par défaut. Activez ceux dont vous avez besoin dans leurs réglages. [Fonctionnement et limites Windows](docs/MODULES.md#windows-hub)
+
 ## Contribuer
 
 [Architecture](docs/ARCHITECTURE.md) · [Design V2](docs/DESIGN.md) · [Développement et mesures](docs/DEVELOPMENT.md) · [Modules](docs/MODULES.md) · [Installation et releases](docs/RELEASING.md) · [Skills Codex](docs/SKILLS.md)

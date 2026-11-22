@@ -30,3 +30,7 @@ Les skills suivants sont installés sous `.agents/skills/` à partir de révisio
 | `playwright-interactive` | [OpenAI](https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/playwright-interactive) | Inventaire des interactions, tests du bundle, scénarios hors connexion et refus d’enregistrement, contrôle visuel et captures. Utilisation via Playwright Test dans le bac à sable Cloud. Le mode `js_repl` sans sandbox demandé par le skill n’a pas été activé. |
 
 Les workflows restent vérifiés avec le skill GitHub Actions .NET. Les fichiers de licence et notices lorsqu’ils sont fournis accompagnent les copies locales.
+
+## Windows Hub
+
+Les catalogues .NET, Anthropic, Vercel Labs, Next Level Builder et OpenAI ont été revérifiés. Les copies épinglées du dépôt couvrent les nouveaux outils avec les références officielles Windows. Aucun skill supplémentaire n’a été installé. Le skill P/Invoke a servi aux déclarations Win32 et au cycle de vie de PDH, HWND et DWM. Les recommandations .NET de performance ont servi à borner l’historique, limiter la collecte avancée et éviter les attentes actives. Les skills frontend et React ont orienté les surfaces de configuration, les graphiques denses et les regroupements. Playwright Test et axe couvrent l’intégration du bundle, les captures et l’accessibilité. Actionlint vérifie les workflows qui emballent et testent le paquet.

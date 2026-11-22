@@ -5,15 +5,12 @@ using WinLayer.Modules;
 
 namespace WinLayer.Agent;
 
-internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : IDisposable
+internal sealed partial class WindowsAutoClicker(SynchronizationContext ui, GlobalHotkeys hotkeys, Func<HubOptions>? keyboard = null) : IDisposable
 {
-    private readonly Dictionary<ClickShortcut, int> _bindings = new(4);
-    private HotkeyWindow? _window;
     private AutoClickerOptions _options = new();
     private Run? _run;
     private KeyboardHook? _hook;
     private IntPtr _hookHandle;
-    private int _nextId;
     private bool _paused;
     private string? _error;
 
@@ -27,9 +24,8 @@ internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : ID
         if (!options.Enabled)
             return;
 
-        _window ??= new HotkeyWindow(OnHotkey);
-        Register(options.Shortcut);
-        Register(options.Emergency);
+        hotkeys.Reserve(this, options.Shortcut, OnHotkey);
+        hotkeys.Reserve(this, options.Emergency, OnHotkey);
     }
 
     public void Apply(AutoClickerOptions options)
@@ -57,23 +53,13 @@ internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : ID
 
     public void Prune()
     {
-        var hasPair = _options.Enabled && _bindings.ContainsKey(_options.Shortcut) &&
-            _bindings.ContainsKey(_options.Emergency);
-        foreach (var (shortcut, id) in _bindings.ToArray())
-        {
-            if (hasPair && (shortcut == _options.Shortcut || shortcut == _options.Emergency))
-                continue;
-
-            UnregisterHotKey(_window!.Handle, id);
-            _bindings.Remove(shortcut);
-        }
-
-        if (_bindings.Count == 0)
-        {
-            _window?.DestroyHandle();
-            _window = null;
-        }
+        if (_options.Enabled && hotkeys.Owns(this, _options.Shortcut) && hotkeys.Owns(this, _options.Emergency))
+            hotkeys.Retain(this, _options.Shortcut, _options.Emergency);
+        else
+            hotkeys.Retain(this);
     }
+
+    public void Stop() => StopRun();
 
     public void Rearm()
     {
@@ -108,35 +94,16 @@ internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : ID
         Prune();
     }
 
-    private void Register(ClickShortcut shortcut)
+    private void OnHotkey(ClickShortcut shortcut)
     {
-        if (_bindings.ContainsKey(shortcut))
-            return;
-
-        // Only two to four IDs are registered, but queued messages must not match a replaced shortcut.
-        _nextId = _nextId % 0xBFFF + 1;
-        if (!RegisterHotKey(_window!.Handle, _nextId, (uint)shortcut.Modifiers | 0x4000 /* MOD_NOREPEAT */, (uint)shortcut.Key))
-            throw new InvalidOperationException($"Le raccourci {ShortcutName(shortcut)} est indisponible. Choisissez une autre combinaison.");
-
-        _bindings.Add(shortcut, _nextId);
-    }
-
-    private void OnHotkey(int id)
-    {
-        if (_bindings.TryGetValue(_options.Emergency, out var stopId) && id == stopId)
+        switch (AutoClicker.OnHotkey(_options, State, shortcut))
         {
-            if (AutoClicker.OnHotkey(_options, State, _options.Emergency) == ClickHotkeyAction.Pause)
+            case ClickHotkeyAction.Pause:
                 Pause();
-            return;
-        }
-
-        if (!_bindings.TryGetValue(_options.Shortcut, out var startId) || id != startId)
-            return;
-        switch (AutoClicker.OnHotkey(_options, State, _options.Shortcut))
-        {
+                break;
             case ClickHotkeyAction.Stop:
                 StopRun();
-                return;
+                break;
             case ClickHotkeyAction.Start:
                 StartRun();
                 break;
@@ -158,7 +125,7 @@ internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : ID
                     throw new Win32Exception(Marshal.GetLastPInvokeError());
             }
 
-            var run = new Run(_options);
+            var run = new Run(_options, keyboard?.Invoke());
             _run = run;
             try
             {
@@ -182,7 +149,7 @@ internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : ID
         Exception? failure = null;
         try
         {
-            using var driver = new WindowsClickDriver(run.Options, run.SendGate);
+            using var driver = new WindowsClickDriver(run.Options, run.SendGate, run.Keyboard);
             AutoClicker.Run(run.Options, driver, run.Cancellation.Token);
         }
         catch (Exception error)
@@ -235,19 +202,10 @@ internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : ID
         return CallNextHookEx(IntPtr.Zero, code, message, data);
     }
 
-    private static string ShortcutName(ClickShortcut shortcut)
-    {
-        var modifiers = (ShortcutModifiers)shortcut.Modifiers;
-        return (modifiers.HasFlag(ShortcutModifiers.Control) ? "Ctrl+" : "") +
-            (modifiers.HasFlag(ShortcutModifiers.Alt) ? "Alt+" : "") +
-            (modifiers.HasFlag(ShortcutModifiers.Shift) ? "Maj+" : "") +
-            (modifiers.HasFlag(ShortcutModifiers.Windows) ? "Win+" : "") +
-            (shortcut.Key >= 0x70 ? $"F{shortcut.Key - 0x6F}" : ((char)shortcut.Key).ToString());
-    }
-
-    private sealed class Run(AutoClickerOptions options)
+    private sealed class Run(AutoClickerOptions options, HubOptions? keyboard)
     {
         public AutoClickerOptions Options { get; } = options;
+        public HubOptions? Keyboard { get; } = keyboard;
         public CancellationTokenSource Cancellation { get; } = new();
         public object SendGate { get; } = new();
         private bool _finished;
@@ -271,34 +229,7 @@ internal sealed partial class WindowsAutoClicker(SynchronizationContext ui) : ID
         }
     }
 
-    private sealed class HotkeyWindow : NativeWindow
-    {
-        private readonly Action<int> _receive;
-
-        public HotkeyWindow(Action<int> receive)
-        {
-            _receive = receive;
-            CreateHandle(new CreateParams { Parent = new IntPtr(-3) /* HWND_MESSAGE */ });
-        }
-
-        protected override void WndProc(ref Message message)
-        {
-            if (message.Msg == 0x0312 /* WM_HOTKEY */)
-                _receive(message.WParam.ToInt32());
-            else
-                base.WndProc(ref message);
-        }
-    }
-
     private delegate IntPtr KeyboardHook(int code, IntPtr message, IntPtr data);
-
-    [LibraryImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool UnregisterHotKey(IntPtr window, int id);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookExW(int type, KeyboardHook hook, IntPtr module, uint thread);

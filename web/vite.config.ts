@@ -16,7 +16,7 @@ export default defineConfig({
         injectTo: 'head-prepend',
         attrs: {
           'http-equiv': 'Content-Security-Policy',
-          content: "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'",
+          content: "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'",
         },
       }],
     },

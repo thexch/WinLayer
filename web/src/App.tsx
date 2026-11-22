@@ -1,10 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, BatteryCharging, BatteryLow, Bluetooth,
-  ChevronDown, CircleAlert, Headphones, LayoutGrid, Monitor, MousePointerClick, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon,
+  ChevronDown, CircleAlert, Crosshair, Cpu, Headphones, Layers, Pin, Radio, Workflow, ScanLine, LayoutGrid, Monitor, MousePointerClick, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon,
 } from 'lucide-react'
 import type { AgentStatus, Appearance, BatteryDevice, BatteryOptions, Page, Preferences } from './bridge'
 import { AutoClickerPage } from './AutoClickerPage'
+import { TabButtons } from './HubControls'
+import { MacroPage, PinPage, RepeaterPage, ScreenToolsPage, SwitcherPage, TaskbarPage } from './HubTools'
+import { NetworkPage, SystemPage } from './HubMonitor'
+import type { HubRequest } from './hub'
 import { Range, Switch } from './controls'
 import { useAgent } from './useAgent'
 
@@ -12,9 +16,26 @@ const navigation = [
   { id: 'dashboard', label: 'Vue d’ensemble', Icon: LayoutGrid },
   { id: 'battery', label: 'Périphériques', Icon: BatteryCharging },
   { id: 'autoClicker', label: 'Auto Clicker', Icon: MousePointerClick },
+  { id: 'macro', label: 'Macro Recorder', Icon: Workflow },
+  { id: 'screen', label: 'Screen Tools', Icon: Crosshair },
+  { id: 'taskbar', label: 'Taskbar Studio', Icon: Layers },
+  { id: 'switcher', label: 'Alt-Tab Customizer', Icon: ScanLine },
+  { id: 'pin', label: 'Always on Top', Icon: Pin },
+  { id: 'network', label: 'Network Monitor', Icon: Radio },
+  { id: 'system', label: 'System Tray Monitor', Icon: Cpu },
   { id: 'general', label: 'Général', Icon: Settings2 },
   { id: 'updates', label: 'Mises à jour', Icon: ArrowDownToLine },
 ] as const
+
+const hubPages = {
+  macro: [MacroPage, 'Macro Recorder', 'Enregistrez, éditez et rejouez vos séquences locales.'],
+  screen: [ScreenToolsPage, 'Screen Tools', 'Prélevez les couleurs et mesurez les pixels du bureau.'],
+  taskbar: [TaskbarPage, 'Taskbar Studio', 'Ajoutez un liseré personnel à la barre des tâches.'],
+  switcher: [SwitcherPage, 'Alt-Tab Customizer', 'Un sélecteur de fenêtres en complément du raccourci Windows.'],
+  pin: [PinPage, 'Always on Top', 'Gardez les fenêtres de votre choix au premier plan.'],
+  network: [NetworkPage, 'Network Monitor', 'Suivez ce qui transite sur votre interface réseau.'],
+  system: [SystemPage, 'System Tray Monitor', 'Diagnostiquez les ressources et les processus de votre PC.'],
+} as const
 
 const ConfirmInstall = lazy(() => import('./ConfirmInstall'))
 const readingTime = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' })
@@ -256,6 +277,7 @@ function UpdatePage({ status, canEdit, onCheck, onInstall, downloading, progress
 
 export function App() {
   const { status, page, connection, feedback, busy, downloadProgress, go, act } = useAgent()
+  const [automation, setAutomation] = useState<'clicker' | 'repeater'>('clicker')
   const [preview, setPreview] = useState<Appearance>()
   const main = useRef<HTMLElement>(null)
   const preferences = status?.preferences
@@ -266,14 +288,23 @@ export function App() {
   useEffect(() => { document.documentElement.dataset.theme = appearance }, [appearance])
   useEffect(() => { main.current?.scrollTo({ top: 0 }) }, [page])
 
-  function save({ autoClicker: _autoClicker, ...next }: Preferences) {
+  function save({ autoClicker: _autoClicker, hub: _hub, ...next }: Preferences) {
     void act({ action: 'save', preferences: next }, 'Enregistrement…', 'Préférences enregistrées.')
+  }
+
+  function runHub(hub: HubRequest) {
+    return act({ action: 'hub', hub }, 'Action en cours…', hub.action === 'configure' ? 'Configuration appliquée.' :
+      hub.action === 'copyColor' ? 'Couleur copiée.' : '')
   }
 
   function navigate(next: Page) {
     setPreview(undefined)
     go(next)
   }
+
+  const hubPage = page in hubPages ? hubPages[page as keyof typeof hubPages] : undefined
+  const hubProps = status?.hub ? { status: status.hub, data: preferences?.hub, run: runHub, busy: !canEdit } : undefined
+  const Module = hubPage?.[0]
 
   return <>
     <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); main.current?.focus() }}>Aller au contenu</a>
@@ -316,13 +347,21 @@ export function App() {
             </div>
           </>}
           {page === 'autoClicker' && <>
-            <Header title="Auto Clicker" description="Automatisez vos clics avec un raccourci global." />
-            {preferences?.autoClicker && status?.autoClicker ?
+            <Header title={automation === 'clicker' ? 'Auto Clicker' : 'Key Repeater'}
+              description={automation === 'clicker' ? 'Automatisez vos clics avec un raccourci global.' : 'Répétez une touche ou une combinaison.'} />
+            <TabButtons label="Automatisation" choices={[[ 'clicker', 'Auto Clicker' ], [ 'repeater', 'Key Repeater' ]]}
+              active={automation} select={setAutomation} />
+            {automation === 'repeater' ? (hubProps && <RepeaterPage {...hubProps} />) :
+              preferences?.autoClicker && status?.autoClicker ?
               <AutoClickerPage options={preferences.autoClicker} status={status.autoClicker} canEdit={canEdit}
                 onSave={(clickerOptions) => { void act({ action: 'saveAutoClicker', clickerOptions }, 'Enregistrement…', 'Configuration enregistrée.') }}
                 onPause={() => act({ action: 'pauseAutoClicker' }, 'Mise en pause…')}
                 onRearm={() => { void act({ action: 'rearmAutoClicker' }, 'Réarmement…') }} /> :
               <p className="fine">La configuration apparaîtra quand l’agent répondra.</p>}
+          </>}
+          {hubPage && <>
+            <Header title={hubPage[1]} description={hubPage[2]} />
+            {Module && hubProps ? <Module {...hubProps} /> : <p className="fine">En attente de l’agent WinLayer.</p>}
           </>}
           {page === 'general' && <>
             <Header title="Général" description="Personnalisez l’apparence et le démarrage de WinLayer." />

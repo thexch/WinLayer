@@ -24,6 +24,9 @@ internal sealed class ResidentApplication : ApplicationContext
     private readonly ToolStripMenuItem _statusMenu = new() { Enabled = false };
     private readonly DeviceBatteryModule _battery;
     private readonly WindowsAutoClicker _clicker;
+    private readonly GlobalHotkeys _hotkeys = new();
+    private readonly WindowsHub _hub;
+    private readonly SemaphoreSlim _preferenceGate = new(1);
     private readonly Task _server;
     private readonly Task _autoCheck;
     private Process? _settings;
@@ -41,7 +44,8 @@ internal sealed class ResidentApplication : ApplicationContext
 
     public ResidentApplication(bool open, Page page, Stopwatch startup, bool measure)
     {
-        _clicker = new(_ui);
+        _clicker = new(_ui, _hotkeys);
+        _hub = new(_hotkeys, _ui, SaveColorAsync);
         _updateStatus = _updates.IsInstalled ? new(UpdateState.NotChecked) : new(UpdateState.Unavailable);
         _battery = new([() => new WindowsBluetoothProvider(), () => new WindowsHyperXProvider()],
             status => _ui.Post(_ => SetBatteryStatus(status), null),
@@ -60,6 +64,8 @@ internal sealed class ResidentApplication : ApplicationContext
         _menu.Items.Add("Ouvrir les paramètres", null, (_, _) => OpenSettings(Page.Dashboard));
         _menu.Items.Add("Device Battery", null, (_, _) => OpenSettings(Page.Battery));
         _menu.Items.Add("Auto Clicker", null, (_, _) => OpenSettings(Page.AutoClicker));
+        _menu.Items.Add("Screen Tools", null, (_, _) => OpenSettings(Page.Screen));
+        _menu.Items.Add("System Tray Monitor", null, (_, _) => OpenSettings(Page.System));
         var pauseClicker = new ToolStripMenuItem("Mettre Auto Clicker en pause", null, (_, _) => _clicker.Pause());
         _menu.Items.Add(pauseClicker);
         _menu.Opening += (_, _) => pauseClicker.Visible =
@@ -88,7 +94,7 @@ internal sealed class ResidentApplication : ApplicationContext
     private AgentStatus Snapshot() => new(_preferences, _batteryStatus, _updateStatus,
         _updates.CurrentVersion?.ToString() ??
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0",
-        _error, _requestedPage, _navigationRevision, _clicker.Status);
+        _error, _requestedPage, _navigationRevision, _clicker.Status, _hub.Snapshot());
 
     private async Task ServeAsync()
     {
@@ -119,6 +125,7 @@ internal sealed class ResidentApplication : ApplicationContext
                 _clicker.Prune();
             }
 
+            _hub.Initialize(_preferences.Hub ?? new());
             await _battery.ApplyAsync(_preferences.Battery);
             while (!_stop.IsCancellationRequested)
             {
@@ -180,13 +187,15 @@ internal sealed class ResidentApplication : ApplicationContext
             switch (request.Command)
             {
                 case Command.Status:
+                    _hub.SettingsView(request.Page);
+                    break;
                 case Command.Quit:
                     break;
                 case Command.OpenSettings when Enum.IsDefined(request.Page):
                     OpenSettings(request.Page);
                     break;
                 case Command.Save when request.Preferences is not null:
-                    await SaveAsync(request.Preferences.Normalize() with { AutoClicker = _preferences.AutoClicker });
+                    await SaveAsync(request.Preferences.Normalize());
                     break;
                 case Command.SaveAutoClicker when request.ClickerOptions is { } clicker && clicker.IsValid():
                     return await SaveClickerAsync(clicker);
@@ -203,6 +212,8 @@ internal sealed class ResidentApplication : ApplicationContext
                         return new(Snapshot(), error.Message);
                     }
                     break;
+                case Command.Hub when request.Hub is { } hub && hub.IsValid():
+                    return await HandleHubAsync(hub);
                 case Command.RefreshBattery:
                     if (!_battery.RequestRefresh())
                         return new(Snapshot(), "Activez Device Battery avant l’actualisation.");
@@ -232,6 +243,13 @@ internal sealed class ResidentApplication : ApplicationContext
 
     private async Task<Response> SaveClickerAsync(AutoClickerOptions options)
     {
+        await _preferenceGate.WaitAsync(_stop.Token);
+        try { return await CommitClickerAsync(options); }
+        finally { _preferenceGate.Release(); }
+    }
+
+    private async Task<Response> CommitClickerAsync(AutoClickerOptions options)
+    {
         try
         {
             try
@@ -260,6 +278,16 @@ internal sealed class ResidentApplication : ApplicationContext
 
     private async Task SaveAsync(Preferences preferences)
     {
+        await _preferenceGate.WaitAsync(_stop.Token);
+        try
+        {
+            await SaveGeneralAsync(preferences with { AutoClicker = _preferences.AutoClicker, Hub = _preferences.Hub });
+        }
+        finally { _preferenceGate.Release(); }
+    }
+
+    private async Task SaveGeneralAsync(Preferences preferences)
+    {
         var startupChanged = preferences.StartWithWindows != _preferences.StartWithWindows;
         if (startupChanged || _error is not null)
             WindowsSettings.SetAutoStart(preferences.StartWithWindows);
@@ -278,6 +306,91 @@ internal sealed class ResidentApplication : ApplicationContext
         _error = null;
         await _battery.ApplyAsync(preferences.Battery);
         UpdateBatteryTray();
+    }
+
+    private async Task<Response> HandleHubAsync(HubRequest request)
+    {
+        try
+        {
+            if (request.Action is HubAction.Configure or HubAction.SaveMacro or HubAction.DeleteMacro or HubAction.Color)
+                await SaveHubAsync(request);
+            else
+                await _hub.RunAsync(request);
+            return new(Snapshot());
+        }
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
+        {
+            return new(Snapshot(), error.Message);
+        }
+    }
+
+    private async Task SaveHubAsync(HubRequest request)
+    {
+        await _preferenceGate.WaitAsync(_stop.Token);
+        try
+        {
+            var hub = _preferences.Hub ?? new();
+            switch (request.Action)
+            {
+                case HubAction.Configure:
+                    var options = request.Options!;
+                    _hub.Reserve(request.Tool, options);
+                    var tools = new Dictionary<HubTool, HubOptions>(hub.Tools) { [request.Tool] = options };
+                    hub = hub with { Tools = tools };
+                    break;
+                case HubAction.SaveMacro:
+                    var macro = request.Macro!;
+                    var existing = hub.Macros.Where(item => !string.Equals(item.Name, macro.Name, StringComparison.OrdinalIgnoreCase)).ToArray();
+                    if (existing.Length >= 12)
+                        throw new InvalidOperationException("La bibliothèque est limitée à douze macros.");
+                    hub = hub with { Macros = [.. existing, macro] };
+                    break;
+                case HubAction.DeleteMacro:
+                    hub = hub with { Macros = hub.Macros.Where(item => !string.Equals(item.Name, request.Value, StringComparison.OrdinalIgnoreCase)).ToArray() };
+                    break;
+                case HubAction.Color:
+                    var color = request.Value!.ToUpperInvariant();
+                    hub = hub with { Favorites = hub.Favorites.Contains(color)
+                        ? hub.Favorites.Where(value => value != color).ToArray()
+                        : new[] { color }.Concat(hub.Favorites).Take(24).ToArray() };
+                    break;
+            }
+
+            var updated = _preferences with { Hub = hub };
+            await _store.SaveAsync(updated, _stop.Token);
+            if (_quitting)
+                return;
+            _preferences = updated;
+            if (request.Action == HubAction.Configure)
+                _hub.Apply(request.Tool, hub);
+            else
+                _hub.UpdateLibrary(hub);
+        }
+        finally
+        {
+            if (request.Action == HubAction.Configure)
+                _hub.Retain(request.Tool);
+            _preferenceGate.Release();
+        }
+    }
+
+    private async Task SaveColorAsync(string color)
+    {
+        if (_quitting)
+            return;
+        await _preferenceGate.WaitAsync(_stop.Token);
+        try
+        {
+            var hub = _preferences.Hub ?? new();
+            hub = hub with { Colors = new[] { color }.Concat(hub.Colors.Where(item => item != color)).Take(24).ToArray() };
+            var updated = _preferences with { Hub = hub };
+            await _store.SaveAsync(updated, _stop.Token);
+            if (_quitting)
+                return;
+            _preferences = updated;
+            _hub.UpdateLibrary(hub);
+        }
+        finally { _preferenceGate.Release(); }
     }
 
     private async Task CheckAutomaticallyAsync()
@@ -515,7 +628,9 @@ internal sealed class ResidentApplication : ApplicationContext
             return;
 
         _quitting = true;
+        _hub.Dispose();
         _clicker.Dispose();
+        _hotkeys.Dispose();
         _tray.Visible = false;
         _batteryTray?.Dispose();
         _batteryTray = null;
@@ -542,7 +657,9 @@ internal sealed class ResidentApplication : ApplicationContext
         if (disposing)
         {
             _batteryTray?.Dispose();
+            _hub.Dispose();
             _clicker.Dispose();
+            _hotkeys.Dispose();
             _tray.Dispose();
             _menu.Dispose();
             _icon.Dispose();
