@@ -7,7 +7,7 @@ import type { HubPageProps } from './HubTools'
 const fmt = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 })
 const clock = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 type Unit = HubOptions['rateUnit']
-type Series = { key: 'cpu' | 'ram' | 'gpu' | 'down' | 'up'; label: string; ink: 'accent' | 'positive' }
+type Series = { key: 'cpu' | 'ram' | 'gpu' | 'down' | 'up'; label: string; ink: 'accent' | 'positive' | 'warning' }
 const networkSeries: Series[] = [{ key: 'down', label: 'Réception', ink: 'accent' }, { key: 'up', label: 'Envoi', ink: 'positive' }]
 
 function rate(value: number | null | undefined, unit: Unit) {
@@ -26,7 +26,12 @@ function StatsChart({ history, series, unit }: { history: HubSample[]; series: S
   const absolute = unit ? Math.max(1, ...history.flatMap(sample => visible.map(({ key }) => sample[key] ?? 0))) : 100
   const available = history.some(sample => visible.some(({ key }) => sample[key] != null))
   const y = (value: number) => 110 - Math.min(1, value / absolute) * 103
-  const x = (index: number) => 1 + 638 * index / Math.max(1, history.length - 1)
+  const times = history.map(sample => Date.parse(sample.at))
+  const start = times[0] ?? 0
+  const span = (times.at(-1) ?? start) - start
+  const x = (index: number) => 1 + 638 * (span > 0
+    ? Math.max(0, Math.min(1, (times[index]! - start) / span))
+    : index / Math.max(1, history.length - 1))
   function line(key: Series['key']) {
     let start = true
     return history.map((sample, index) => {
@@ -49,7 +54,11 @@ function StatsChart({ history, series, unit }: { history: HubSample[]; series: S
       {[7, 33, 59, 84, 110].map(row => <path key={row} d={`M0 ${row}H640`} className="hub-grid-line" />)}
       {visible.map(({ key, ink }) => <g key={key} className={`hub-plot ${ink}`}>
         <path d={line(key)} vectorEffect="non-scaling-stroke" />
-        {history.length === 1 && history[0]?.[key] != null && <circle cx={x(0)} cy={y(history[0][key])} r="3" />}
+        {history.map((sample, index) => {
+          const value = sample[key]
+          return value != null && history[index - 1]?.[key] == null && history[index + 1]?.[key] == null
+            ? <circle key={index} cx={x(index)} cy={y(value)} r="3" /> : null
+        })}
       </g>)}
     </svg> : <p className="hub-chart-empty fine">En attente de mesures disponibles.</p>}
     <div className="hub-chart-times mono fine"><span>{history[0] ? clock.format(Date.parse(history[0].at)) : '—'}</span>
@@ -171,7 +180,7 @@ function Hardware({ metrics, view, history }: { metrics?: HubMetrics | null; vie
   const identity = [
     { key: 'cpu', label: 'CPU', value: latest?.cpu, Icon: Cpu, ink: 'accent' },
     { key: 'ram', label: 'Mémoire', value: latest?.ram, Icon: MemoryStick, ink: 'positive' },
-    { key: 'gpu', label: 'GPU', value: latest?.gpu, Icon: Radio, ink: 'accent' },
+    { key: 'gpu', label: 'GPU', value: latest?.gpu, Icon: Radio, ink: 'warning' },
   ] as const
   const wanted = identity.filter(item => view === 'summary' || item.key === view)
   const active = view === 'cpu' || view === 'summary'

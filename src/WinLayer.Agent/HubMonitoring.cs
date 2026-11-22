@@ -136,7 +136,7 @@ internal sealed class HubMonitoring : IDisposable
                 if (previous.Adapter == current.Adapter && current.Adapter is not null)
                     (down, up) = HubCalculations.NetworkRate(current.Rx, current.Tx, previous.Rx, previous.Tx,
                         Stopwatch.GetElapsedTime(previous.Timestamp, current.Timestamp).TotalSeconds);
-                if (systemActive)
+                if (systemActive && previous.Total != 0)
                     cpu = HubCalculations.Utilization(current.Idle, current.Total, previous.Idle, previous.Total);
             }
             var ram = current.TotalRam > 0 ? 100d * (current.TotalRam - current.FreeRam) / current.TotalRam : (double?)null;

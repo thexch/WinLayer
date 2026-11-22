@@ -581,3 +581,5 @@ meter::-webkit-meter-optimum-value, meter::-webkit-meter-suboptimum-value, meter
 .hub-process-icon { width: 16px; height: 16px; object-fit: contain; }
 
 .hub-selected-formats { margin-bottom: 16px; }
+
+.hub-plot.warning, .hub-sample-dot.warning { color: var(--warning); }
