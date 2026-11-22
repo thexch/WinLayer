@@ -11,13 +11,16 @@ export function useAgent() {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
   const active = useRef(false)
   const revision = useRef<number | null>(null)
+  const navigated = useRef(false)
   const refreshStarted = useRef<number | null>(null)
 
   function accept(next: AgentStatus) {
     if (revision.current !== next.navigationRevision) {
+      if (revision.current !== null || !navigated.current) {
+        view.current = next.requestedPage
+        setPage(next.requestedPage)
+      }
       revision.current = next.navigationRevision
-      view.current = next.requestedPage
-      setPage(next.requestedPage)
     }
     if (refreshStarted.current !== null && next.battery.updatedAt &&
         Date.parse(next.battery.updatedAt) >= refreshStarted.current) {
@@ -31,7 +34,6 @@ export function useAgent() {
   useEffect(() => {
     let disposed = false
     let timer = 0
-    let ready = false
 
     async function poll() {
       if (!active.current) {
@@ -39,15 +41,12 @@ export function useAgent() {
         if (disposed) return
         if (response.status) accept(response.status)
         else setConnection('offline')
-        if (!ready) {
-          ready = true
-          void send({ action: 'ready' })
-        }
       }
       if (!disposed)
         timer = window.setTimeout(poll, 2000)
     }
 
+    void send({ action: 'ready' })
     void poll()
     return () => { disposed = true; window.clearTimeout(timer) }
   }, [])
@@ -80,6 +79,7 @@ export function useAgent() {
   }
 
   function go(next: Page) {
+    navigated.current = true
     view.current = next
     setPage(next)
     if (!active.current) setFeedback('')

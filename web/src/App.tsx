@@ -73,7 +73,7 @@ function Sidebar({ selection, go, connection, version }: {
       )}
     </nav>
     <div className="sidebar-foot">
-      <span className={`presence-dot ${connection}`} aria-hidden="true" />
+      <span className={connection === 'opening' ? 'connection-ring' : `presence-dot ${connection}`} aria-hidden="true" />
       <div>
         <strong>{connection === 'connected' ? 'Agent actif' : connection === 'opening' ? 'Connexion…' : 'Agent indisponible'}</strong>
         {version && <span className="mono">Version {version}</span>}
@@ -136,18 +136,17 @@ function GlassLayers() {
   </div>
 }
 
-function Dashboard({ status, go }: { status?: AgentStatus; go: (page: Page) => void }) {
-  const batteryEnabled = Boolean(status)
+function Dashboard({ status, go, opening }: { status?: AgentStatus; go: (page: Page) => void; opening: boolean }) {
   const known = status?.battery.devices.filter((device) => device.state === 'available' && device.percentage !== null).length ?? 0
   return <>
     <Header title="Vue d’ensemble" description="Retrouvez vos batteries, l’état de WinLayer et vos réglages." />
     <section className="signal-board" aria-labelledby="module-title">
       <div className="signal-copy">
-        <Status tone={!status ? 'neutral' : status.battery.error ? 'warning' : batteryEnabled ? 'positive' : 'neutral'}>
-          {!status ? 'État indisponible' : status.battery.error ? 'Lecture indisponible' : batteryEnabled ? 'Surveillance active' : 'Module désactivé'}
+        <Status tone={!status ? 'neutral' : status.battery.error ? 'warning' : 'positive'}>
+          {!status ? opening ? 'Connexion à l’agent…' : 'État indisponible' : status.battery.error ? 'Lecture indisponible' : 'Surveillance active'}
         </Status>
         <h2 id="module-title">Device Battery</h2>
-        <p>{batteryEnabled && known > 0 ? `${known} niveau${known > 1 ? 'x' : ''} de charge disponible${known > 1 ? 's' : ''}.` :
+        <p>{known > 0 ? `${known} niveau${known > 1 ? 'x' : ''} de charge disponible${known > 1 ? 's' : ''}.` :
           'Suivez la charge de vos périphériques compatibles.'}</p>
         <button type="button" className="button hero-button" onClick={() => go('battery')}>
           Voir les périphériques <ArrowRight size={17} aria-hidden="true" />
@@ -313,7 +312,7 @@ export function App() {
         <div className="workspace">
           {connection === 'offline' && <div className="notice"><CircleAlert size={17} aria-hidden="true" /> L’agent est indisponible. Nouvelle tentative automatique.</div>}
           {status?.error && <div className="notice"><CircleAlert size={17} aria-hidden="true" /> {status.error}</div>}
-          {page === 'dashboard' && <Dashboard status={status} go={navigate} />}
+          {page === 'dashboard' && <Dashboard status={status} go={navigate} opening={connection === 'opening'} />}
           {page === 'battery' && <>
             <Header title="Périphériques" description="Retrouvez les niveaux de charge transmis à Windows.">
               <button type="button" className={`button secondary ${busy === 'refreshBattery' ? 'refreshing' : ''}`}

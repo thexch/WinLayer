@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -14,14 +15,12 @@ internal sealed class SettingsWindow : Form
     private const string Entry = $"https://{Host}/index.html";
     private readonly CancellationTokenSource _closing = new();
     private readonly WebView2 _browser = new() { Dock = DockStyle.Fill, Visible = false };
-    private readonly Label _loading = new()
-    {
-        Text = "Ouverture des réglages WinLayer…",
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleCenter
-    };
+    private readonly StartupView _loading = new();
+    private readonly System.Windows.Forms.Timer _startupDeadline = new() { Interval = 20_000 };
+    private Task<Response?>? _openingStatus;
+    private long _openingStarted;
     private long? _navigationRevision;
-    private bool _receivedStatus;
+    private bool _startupFailed;
     private bool _receiving;
     private bool _closed;
     private Appearance _captionAppearance;
@@ -37,24 +36,31 @@ internal sealed class SettingsWindow : Form
         ClientSize = new Size(1100, 735);
         Controls.Add(_browser);
         Controls.Add(_loading);
+        _loading.BringToFront();
+        _startupDeadline.Tick += (_, _) => ShowError("Le démarrage des réglages a pris trop de temps. Fermez cette fenêtre et réessayez.");
+        ApplyAppearance();
     }
 
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        CaptionTheme.Apply(Handle, _captionAppearance);
+        ApplyAppearance();
     }
 
     protected override void WndProc(ref Message message)
     {
         base.WndProc(ref message);
         if (IsHandleCreated && message.Msg is 0x001A or 0x031A)
-            CaptionTheme.Apply(Handle, _captionAppearance);
+            ApplyAppearance();
     }
 
     protected override async void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        _loading.Start();
+        _startupDeadline.Start();
+        _openingStarted = Stopwatch.GetTimestamp();
+        _openingStatus = ReadOpeningStatusAsync();
         try
         {
             var assets = Path.Combine(AppContext.BaseDirectory, "wwwroot");
@@ -68,13 +74,18 @@ internal sealed class SettingsWindow : Form
                 "WinLayerData", "WebView2");
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: data,
                 options: new CoreWebView2EnvironmentOptions { ExclusiveUserDataFolderAccess = true });
-            if (_closed)
+            if (_closed || _startupFailed)
                 return;
 
             await _browser.EnsureCoreWebView2Async(environment);
-            if (_closed)
+            if (_closed || _startupFailed)
                 return;
 
+            if (_openingStatus is { IsCompletedSuccessfully: true } && _openingStatus.Result?.Status is { } initial)
+            {
+                _captionAppearance = initial.Preferences.Appearance;
+                ApplyAppearance();
+            }
             var core = _browser.CoreWebView2;
             core.Settings.AreHostObjectsAllowed = false;
             core.Settings.AreDevToolsEnabled = false;
@@ -122,6 +133,50 @@ internal sealed class SettingsWindow : Form
         }
     }
 
+    private async Task<Response?> ReadOpeningStatusAsync()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            return await LocalProtocol.SendAsync(new(Command.Status), timeout.Token);
+        }
+        catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException
+            or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<Response> SendToAgentAsync(Request request, int id, CancellationToken cancellationToken)
+    {
+        if (request.Command == Command.Status)
+        {
+            var openingStatus = _openingStatus;
+            _openingStatus = null;
+            if (openingStatus is not null && request.Page == Page.Dashboard &&
+                Stopwatch.GetElapsedTime(_openingStarted) < TimeSpan.FromSeconds(3) &&
+                await openingStatus is { Status: not null } snapshot)
+                return snapshot;
+        }
+        else
+            _openingStatus = null;
+
+        return await LocalProtocol.SendAsync(request, cancellationToken, request.ReportProgress
+            ? value => { if (!_closed) Reply(id, new(Progress: value)); }
+            : null, RequestsOverlay(request) ? GrantAgentFocus : null);
+    }
+
+    private void ApplyAppearance()
+    {
+        if (IsHandleCreated)
+            CaptionTheme.Apply(Handle, _captionAppearance);
+        _loading.ApplyTheme(_captionAppearance);
+        BackColor = _loading.BackColor;
+        if (!_closed)
+            _browser.DefaultBackgroundColor = _loading.BackColor;
+    }
+
     private static bool IsLocal(string address) =>
         Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.Scheme == "https" &&
         uri.Host == Host && uri.IsDefaultPort && uri.UserInfo.Length == 0;
@@ -143,11 +198,13 @@ internal sealed class SettingsWindow : Form
         }
         if (request is null)
         {
-            // React sends this after its first exchange with the host, including agent-offline status.
-            if (_receivedStatus)
+            // React has mounted its local shell. Agent data can arrive after the shell becomes visible.
+            if (!_startupFailed && !_browser.Visible)
             {
-                _loading.Visible = false;
+                _startupDeadline.Stop();
+                _loading.Stop();
                 _browser.Visible = true;
+                _loading.Visible = false;
                 Text = "WinLayer";
             }
             Reply(id, new());
@@ -174,9 +231,7 @@ internal sealed class SettingsWindow : Form
             Response response;
             try
             {
-                response = await LocalProtocol.SendAsync(request, timeout.Token, request.ReportProgress
-                    ? value => { if (!_closed) Reply(id, new(Progress: value)); }
-                    : null, RequestsOverlay(request) ? GrantAgentFocus : null);
+                response = await SendToAgentAsync(request, id, timeout.Token);
             }
             catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException
                 or UnauthorizedAccessException or JsonException)
@@ -187,15 +242,13 @@ internal sealed class SettingsWindow : Form
             if (_closed)
                 return;
 
-            if (request.Command == Command.Status)
-                _receivedStatus = true;
             if (response.Status is { } status)
             {
                 ActivateForNavigation(status.NavigationRevision);
                 if (_captionAppearance != status.Preferences.Appearance)
                 {
                     _captionAppearance = status.Preferences.Appearance;
-                    CaptionTheme.Apply(Handle, _captionAppearance);
+                    ApplyAppearance();
                 }
             }
 
@@ -273,9 +326,11 @@ internal sealed class SettingsWindow : Form
         if (_closed)
             return;
 
+        _startupFailed = true;
+        _startupDeadline.Stop();
         Text = "WinLayer — Réglages indisponibles";
         _browser.Visible = false;
-        _loading.Text = message;
+        _loading.ShowError(message);
         _loading.Visible = true;
     }
 
@@ -289,6 +344,8 @@ internal sealed class SettingsWindow : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         _closed = true;
+        _startupDeadline.Dispose();
+        _loading.Stop();
         _closing.Cancel();
         _closing.Dispose();
         if (_browser.CoreWebView2 is { } core)

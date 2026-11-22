@@ -8,7 +8,7 @@ internal static partial class CaptionTheme
 {
     public static void Apply(nint window, Appearance appearance)
     {
-        var dark = appearance == Appearance.Dark || appearance == Appearance.System && SystemPrefersDark();
+        var dark = IsDark(appearance);
         if (SystemInformation.HighContrast)
         {
             Set(window, 20, 0);
@@ -23,6 +23,9 @@ internal static partial class CaptionTheme
         Set(window, 36, dark ? ColorRef(0xF1, 0xEF, 0xFE) : ColorRef(0x19, 0x1D, 0x34));
         Set(window, 34, dark ? ColorRef(0x31, 0x37, 0x52) : ColorRef(0xDC, 0xE0, 0xEE));
     }
+
+    internal static bool IsDark(Appearance appearance) =>
+        appearance == Appearance.Dark || appearance == Appearance.System && SystemPrefersDark();
 
     private static bool SystemPrefersDark()
     {

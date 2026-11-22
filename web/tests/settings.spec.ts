@@ -30,10 +30,11 @@ const clickerOptions: AutoClickerOptions = {
   limit: 'unlimited', count: 100, durationSeconds: 10,
 }
 
-async function withAgent(page: Page, fixture: AgentStatus) {
-  await page.addInitScript((initial) => {
+async function withAgent(page: Page, fixture: AgentStatus, holdFirstStatus = false) {
+  await page.addInitScript(({ initial, holdFirstStatus }) => {
     const agent = {
       status: initial, online: true, received: [] as Command[], rejectSave: false,
+      releaseStatus: null as (() => void) | null,
     }
     const win = window as typeof window & { __testAgent: typeof agent }
     win.__testAgent = agent
@@ -86,7 +87,7 @@ async function withAgent(page: Page, fixture: AgentStatus) {
           return
         }
 
-        queueMicrotask(() => transport.dispatchEvent(new MessageEvent('message', {
+        const reply = () => queueMicrotask(() => transport.dispatchEvent(new MessageEvent('message', {
           data: {
             id: command.id,
             response: {
@@ -95,11 +96,15 @@ async function withAgent(page: Page, fixture: AgentStatus) {
             },
           },
         })))
+        if (command.action === 'status' && holdFirstStatus) {
+          holdFirstStatus = false
+          agent.releaseStatus = reply
+        } else reply()
       },
     })
-  }, fixture)
+  }, { initial: fixture, holdFirstStatus })
   await page.goto('/')
-  await expect(page.getByText('Agent actif')).toBeVisible()
+  if (!holdFirstStatus) await expect(page.getByText('Agent actif')).toBeVisible()
 }
 
 async function capture(page: Page, name: string) {
@@ -110,6 +115,24 @@ async function capture(page: Page, name: string) {
 }
 
 const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Réglages' })
+
+test('settings report readiness and remain navigable while agent data are pending', async ({ page }) => {
+  await withAgent(page, status, true)
+  await expect(page.getByText('Connexion…', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Vue d’ensemble' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { __testAgent: { received: Command[] } }).__testAgent.received
+      .slice(0, 2).map(command => command.action))).toEqual(['ready', 'status'])
+  await capture(page, '15-ouverture-des-reglages.png')
+
+  await sidebar(page).getByRole('button', { name: 'Périphériques' }).click()
+  await expect(page.getByRole('heading', { name: 'Périphériques' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Actualiser' })).toBeDisabled()
+  await page.evaluate(() =>
+    (window as unknown as { __testAgent: { releaseStatus: (() => void) | null } }).__testAgent.releaseStatus?.())
+  await expect(page.getByText('Agent actif')).toBeVisible()
+  await expect(page.getByRole('meter', { name: 'Charge de Casque Bluetooth' })).toBeVisible()
+})
 
 test('production overview and device states render locally and pass accessibility checks', async ({ page }) => {
   const external: string[] = []
