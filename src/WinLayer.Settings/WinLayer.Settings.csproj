@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>../WinLayer.Agent/WinLayer.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Both package entry points share the full Windows Desktop runtime. -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+    <ProjectReference Include="../WinLayer.Core/WinLayer.Core.csproj" />
+    <Resource Include="../WinLayer.Agent/WinLayer.ico" Link="WinLayer.ico" />
+  </ItemGroup>
+</Project>

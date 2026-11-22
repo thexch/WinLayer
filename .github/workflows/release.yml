@@ -1,0 +1,84 @@
+name: Stable release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions: {}
+
+concurrency:
+  group: stable-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify stable tag and prior Windows CI
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:GITHUB_REF_NAME -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'A stable vMAJOR.MINOR.PATCH tag is required.'
+          }
+          $commit = git rev-parse HEAD
+          $passed = gh run list --repo $env:GITHUB_REPOSITORY --workflow ci.yml --branch main `
+            --event push --commit $commit --status success --limit 1 --json databaseId --jq 'length'
+          if ($LASTEXITCODE -ne 0 -or $passed -ne '1') {
+            throw 'The tagged commit must have a successful Windows CI push run on main.'
+          }
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Restore and build
+        run: |
+          dotnet restore WinLayer.slnx
+          dotnet build WinLayer.slnx -c Release --no-restore -warnaserror
+      - name: Package the tagged version
+        run: ./scripts/Package-Windows.ps1 -Version $env:GITHUB_REF_NAME.Substring(1)
+      - name: Test the release build
+        shell: pwsh
+        run: |
+          $env:WINLAYER_SMOKE_EXE = Join-Path $PWD 'artifacts/agent/WinLayer.exe'
+          dotnet test WinLayer.slnx -c Release --no-build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: stable-windows-packages
+          path: artifacts/releases/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: stable-windows-packages
+          path: artifacts/releases
+      - name: Publish on GitHub Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dotnet tool restore
+          dotnet vpk upload github --repoUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY" `
+            --outputDir artifacts/releases --channel win --token $env:GH_TOKEN `
+            --tag $env:GITHUB_REF_NAME --releaseName "WinLayer $env:GITHUB_REF_NAME" --publish

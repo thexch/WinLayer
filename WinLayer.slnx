@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WinLayer.Agent/WinLayer.Agent.csproj" />
+    <Project Path="src/WinLayer.Core/WinLayer.Core.csproj" />
+    <Project Path="src/WinLayer.Modules/WinLayer.Modules.csproj" />
+    <Project Path="src/WinLayer.Settings/WinLayer.Settings.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WinLayer.Tests/WinLayer.Tests.csproj" />
+  </Folder>
+</Solution>

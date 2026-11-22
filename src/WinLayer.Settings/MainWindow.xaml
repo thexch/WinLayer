@@ -1,0 +1,156 @@
+<Window x:Class="WinLayer.Settings.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WinLayer" Icon="WinLayer.ico" Width="950" Height="700" MinWidth="680" MinHeight="490"
+        FontFamily="Segoe UI" FontSize="14" Language="fr-FR" WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Surface}" UseLayoutRounding="True">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="206" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Border Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="17,25,17,17" KeyboardNavigation.TabNavigation="Continue">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="3,0,0,29">
+                    <Image Source="WinLayer.ico" Width="34" Height="34" Margin="0,0,9,0" />
+                    <TextBlock Text="WinLayer" VerticalAlignment="Center" FontSize="20" FontWeight="SemiBold" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Bottom" Margin="4,12,0,0">
+                    <TextBlock x:Name="AgentPresence" Text="Connexion à l’agent…" Style="{StaticResource MutedText}"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock x:Name="InstalledVersion" Style="{StaticResource MutedText}" />
+                </StackPanel>
+                <ListBox x:Name="Navigation" Background="Transparent" BorderThickness="0" SelectionChanged="Navigate"
+                         AutomationProperties.Name="Navigation principale" VerticalAlignment="Top">
+                    <ListBoxItem Content="Vue d’ensemble" />
+                    <ListBoxItem Content="Device Battery" />
+                    <ListBoxItem Content="Général" />
+                    <ListBoxItem Content="Mises à jour" />
+                </ListBox>
+            </DockPanel>
+        </Border>
+        <DockPanel Grid.Column="1" LastChildFill="True">
+            <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0"
+                    Background="{DynamicResource Card}" Padding="18,10">
+                <TextBlock x:Name="Feedback" Text=" " Style="{StaticResource MutedText}" AutomationProperties.LiveSetting="Polite" />
+            </Border>
+            <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid Margin="31,30,31,12" MaxWidth="940">
+                    <StackPanel x:Name="DashboardPage">
+                        <TextBlock Text="Vue d’ensemble" Style="{StaticResource Heading}" />
+                        <TextBlock Text="Retrouvez vos personnalisations et l’état de WinLayer." Style="{StaticResource MutedText}" Margin="0,0,0,22" />
+                        <Border Style="{StaticResource Panel}">
+                            <StackPanel>
+                                <TextBlock Text="Device Battery" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="Consultez la batterie des périphériques Bluetooth compatibles et recevez une alerte lorsqu’elle est faible."
+                                           Style="{StaticResource MutedText}" Margin="0,5,0,14" />
+                                <TextBlock x:Name="BatterySummary" FontWeight="SemiBold" Margin="0,0,0,12" />
+                                <Button Content="_Configurer Device Battery" Click="OpenBattery" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Panel}">
+                            <StackPanel>
+                                <TextBlock Text="Agent en arrière-plan" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="Les modules actifs continuent de fonctionner lorsque vous fermez cette fenêtre."
+                                           Style="{StaticResource MutedText}" Margin="0,5,0,13" />
+                                <Button Content="Paramètres _généraux" Click="OpenGeneral" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="BatteryPage" Visibility="Collapsed">
+                        <TextBlock Text="Device Battery" Style="{StaticResource Heading}" />
+                        <TextBlock Text="Périphériques Bluetooth LE associés à ce PC." Style="{StaticResource MutedText}" Margin="0,0,0,22" />
+                        <Border Style="{StaticResource Panel}">
+                            <StackPanel>
+                                <CheckBox x:Name="BatteryEnabled" Content="_Activer Device Battery" Style="{StaticResource Switch}"
+                                          HorizontalAlignment="Left" Click="ToggleBattery" />
+                                <StackPanel x:Name="BatteryOptionsPanel" Margin="3,14,0,0">
+                                    <TextBlock Text="{Binding ElementName=Interval, Path=Value, StringFormat='Actualisation de secours toutes les {0:0} min'}" />
+                                    <Slider x:Name="Interval" Minimum="2" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Width="205" HorizontalAlignment="Left" Margin="0,6,0,12"
+                                            AutomationProperties.Name="Intervalle d’actualisation en minutes" />
+                                    <CheckBox x:Name="BatteryAlerts" Content="Alerte de batterie _faible" Style="{StaticResource Switch}"
+                                              HorizontalAlignment="Left" />
+                                    <StackPanel Margin="0,9,0,14" IsEnabled="{Binding ElementName=BatteryAlerts, Path=IsChecked}">
+                                        <TextBlock Text="{Binding ElementName=Threshold, Path=Value, StringFormat='Alerte à {0:0} % ou moins'}" />
+                                        <Slider x:Name="Threshold" Minimum="5" Maximum="50" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                Width="205" HorizontalAlignment="Left" Margin="0,6,0,0"
+                                                AutomationProperties.Name="Seuil de batterie faible en pourcentage" />
+                                    </StackPanel>
+                                    <Button x:Name="SaveBatteryButton" Content="_Appliquer" Style="{StaticResource PrimaryButton}" Click="SaveBattery" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Panel}">
+                            <StackPanel>
+                                <DockPanel LastChildFill="True">
+                                    <Button x:Name="RefreshButton" DockPanel.Dock="Right" Content="_Actualiser" Click="Refresh" />
+                                    <TextBlock Text="Périphériques" VerticalAlignment="Center" Style="{StaticResource CardTitle}" />
+                                </DockPanel>
+                                <TextBlock x:Name="BatteryReadStatus" Style="{StaticResource MutedText}" Margin="0,7,0,0" />
+                                <ItemsControl x:Name="Devices" Margin="0,4,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,11,0,6" Margin="0,5,0,0">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Margin="0,0,13,0">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource MutedText}" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Level}" Foreground="{DynamicResource Accent}"
+                                                               FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="GeneralPage" Visibility="Collapsed">
+                        <TextBlock Text="Général" Style="{StaticResource Heading}" />
+                        <TextBlock Text="Ajustez l’apparence et le lancement de WinLayer." Style="{StaticResource MutedText}" Margin="0,0,0,22" />
+                        <Border Style="{StaticResource Panel}">
+                            <StackPanel x:Name="GeneralOptions">
+                                <TextBlock Text="Apparence" Style="{StaticResource CardTitle}" />
+                                <WrapPanel Margin="0,12,0,18">
+                                    <RadioButton x:Name="SystemTheme" Content="_Système" GroupName="Appearance" Checked="ChangeTheme" />
+                                    <RadioButton x:Name="LightTheme" Content="_Clair" GroupName="Appearance" Checked="ChangeTheme" />
+                                    <RadioButton x:Name="DarkTheme" Content="S_ombre" GroupName="Appearance" Checked="ChangeTheme" />
+                                </WrapPanel>
+                                <CheckBox x:Name="AutoStart" Content="_Démarrer avec Windows" Style="{StaticResource Switch}"
+                                          HorizontalAlignment="Left" Margin="0,1,0,8" />
+                                <CheckBox x:Name="AutoUpdates" Content="_Rechercher automatiquement les mises à jour" Style="{StaticResource Switch}"
+                                          HorizontalAlignment="Left" Margin="0,0,0,15" />
+                                <Button Content="_Appliquer" Style="{StaticResource PrimaryButton}" Click="SaveGeneral" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="UpdatesPage" Visibility="Collapsed">
+                        <TextBlock Text="Mises à jour" Style="{StaticResource Heading}" />
+                        <TextBlock Text="Versions stables de WinLayer, distribuées via GitHub Releases." Style="{StaticResource MutedText}" Margin="0,0,0,22" />
+                        <Border Style="{StaticResource Panel}">
+                            <StackPanel>
+                                <TextBlock x:Name="UpdateHeading" Text="État des mises à jour" Style="{StaticResource CardTitle}" />
+                                <TextBlock x:Name="UpdateDetail" Style="{StaticResource MutedText}" Margin="0,6,0,14" />
+                                <WrapPanel>
+                                    <Button x:Name="CheckUpdatesButton" Content="_Rechercher" Click="CheckUpdates" Margin="0,0,8,4" />
+                                    <Button x:Name="InstallButton" Content="_Installer la mise à jour" Visibility="Collapsed"
+                                            Style="{StaticResource PrimaryButton}" Click="InstallUpdate" Margin="0,0,0,4" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+        </DockPanel>
+    </Grid>
+</Window>
