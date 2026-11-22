@@ -8,7 +8,7 @@ public static class SettingsBridge
 {
     private const int MaximumMessageLength = 4096;
     private const int MaximumHubMessageLength = 32_768;
-    private static readonly JsonSerializerOptions Format = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions RequestFormat = new(JsonSerializerDefaults.Web)
     {
         MaxDepth = 8,
         AllowDuplicateProperties = false,
@@ -16,6 +16,9 @@ public static class SettingsBridge
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) }
     };
+
+    // Responses wrap the persisted Hub options in an agent snapshot and a reply envelope.
+    private static readonly JsonSerializerOptions ResponseFormat = new(RequestFormat) { MaxDepth = 16 };
 
     public static bool TryRead(string json, out int id, out Request? request)
     {
@@ -27,7 +30,7 @@ public static class SettingsBridge
         Message? message;
         try
         {
-            message = JsonSerializer.Deserialize<Message>(json, Format);
+            message = JsonSerializer.Deserialize<Message>(json, RequestFormat);
         }
         catch (JsonException)
         {
@@ -78,9 +81,9 @@ public static class SettingsBridge
         return request is not null;
     }
 
-    public static string Write(int id, Response response) => JsonSerializer.Serialize(new { id, response }, Format);
+    public static string Write(int id, Response response) => JsonSerializer.Serialize(new { id, response }, ResponseFormat);
 
-    public static string WriteMacro(MacroPreset macro) => JsonSerializer.Serialize(macro, Format);
+    public static string WriteMacro(MacroPreset macro) => JsonSerializer.Serialize(macro, RequestFormat);
 
     private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version, AutoClickerOptions? ClickerOptions, HubRequest? Hub, Page? View);
 

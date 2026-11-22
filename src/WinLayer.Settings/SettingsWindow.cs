@@ -195,8 +195,8 @@ internal sealed class SettingsWindow : Form
                 }
             }
 
-            Reply(id, response);
-            if (request.Command == Command.InstallUpdate && response is { Error: null, Status.Updates.State: UpdateState.Installing })
+            if (Reply(id, response) && request.Command == Command.InstallUpdate &&
+                response is { Error: null, Status.Updates.State: UpdateState.Installing })
                 Close();
         }
         finally
@@ -205,15 +205,33 @@ internal sealed class SettingsWindow : Form
         }
     }
 
-    private void Reply(int id, Response response)
+    private bool Reply(int id, Response response)
     {
         try
         {
-            _browser.CoreWebView2?.PostWebMessageAsJson(SettingsBridge.Write(id, response));
+            if (_browser.CoreWebView2 is not { } browser)
+                return false;
+
+            string message;
+            try
+            {
+                message = SettingsBridge.Write(id, response);
+            }
+            catch (JsonException error)
+            {
+                System.Diagnostics.Trace.TraceError(error.ToString());
+                browser.PostWebMessageAsJson(SettingsBridge.Write(id,
+                    new(Error: "Les réglages reçus n’ont pas pu être affichés.")));
+                return false;
+            }
+
+            browser.PostWebMessageAsJson(message);
+            return true;
         }
         catch (InvalidOperationException error)
         {
             System.Diagnostics.Trace.TraceError(error.ToString());
+            return false;
         }
     }
 

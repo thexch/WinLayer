@@ -96,6 +96,34 @@ public sealed class SettingsBridgeTests
     }
 
     [TestMethod]
+    public void ReplyIncludesNestedHubPreferences()
+    {
+        var preferences = new Preferences
+        {
+            Hub = new()
+            {
+                Tools = new()
+                {
+                    [HubTool.Repeater] = HubOptions.Default(HubTool.Repeater) with { Enabled = true },
+                    [HubTool.Picker] = HubOptions.Default(HubTool.Picker) with
+                    {
+                        Palettes = [new("Favorites", ["#7669DD"])]
+                    }
+                }
+            }
+        };
+        var snapshot = new AgentStatus(preferences, new([]), new(UpdateState.NotChecked), "3.0.1", null, Page.Screen, 2);
+        using var document = JsonDocument.Parse(SettingsBridge.Write(19, new(snapshot)));
+        var tools = document.RootElement.GetProperty("response").GetProperty("status")
+            .GetProperty("preferences").GetProperty("hub").GetProperty("tools");
+
+        Assert.IsTrue(tools.GetProperty("repeater").GetProperty("enabled").GetBoolean());
+        Assert.AreEqual(0x79, tools.GetProperty("repeater").GetProperty("repeat")
+            .GetProperty("emergency").GetProperty("key").GetInt32());
+        Assert.AreEqual("#7669DD", tools.GetProperty("picker").GetProperty("palettes")[0].GetProperty("colors")[0].GetString());
+    }
+
+    [TestMethod]
     public void ReplyUsesCamelCaseAndStringEnumsForTheBrowser()
     {
         var snapshot = new AgentStatus(new(), new([new("id", "HyperX", BatteryState.Available, 72, BatterySource.HyperXUsb)]),

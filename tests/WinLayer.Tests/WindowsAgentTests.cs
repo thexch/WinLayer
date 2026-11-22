@@ -126,6 +126,16 @@ public sealed class WindowsAgentTests
             var saved = await Send(new(HubTool.Macro, HubAction.SaveMacro, Macro: macro));
             Assert.IsNull(saved.Error);
             Assert.IsTrue(saved.Status?.Preferences.Hub?.Macros.Any(item => item.Name == macro.Name));
+
+            var reopened = await LocalProtocol.SendAsync(new(Command.OpenSettings, Page.Screen), stop);
+            Assert.IsNull(reopened.Error);
+            using (var settings = await AwaitSettingsWindowAsync(stop))
+            {
+                Assert.IsTrue(settings.CloseMainWindow());
+                await settings.WaitForExitAsync(stop);
+                Assert.AreEqual(0, settings.ExitCode);
+            }
+
             Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Open))).Error);
             var visibleDeadline = Stopwatch.StartNew();
             while (FindWindowW(null, "WinLayer — Sélecteur de fenêtres") == IntPtr.Zero && visibleDeadline.Elapsed < TimeSpan.FromSeconds(6))
