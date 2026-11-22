@@ -37,12 +37,24 @@ public static class SettingsBridge
             return false;
 
         id = message.Id;
+        if (message.Action == "saveAutoClicker")
+        {
+            if (message is not { Preferences: null, Version: null, ClickerOptions: { } clicker } || !clicker.IsValid())
+                return false;
+            request = new(Command.SaveAutoClicker, ClickerOptions: clicker);
+            return true;
+        }
+
+        if (message.ClickerOptions is not null)
+            return false;
         if (message is { Action: "ready", Preferences: null, Version: null })
             return true;
 
         request = message switch
         {
             { Action: "status", Preferences: null, Version: null } => new(Command.Status),
+            { Action: "pauseAutoClicker", Preferences: null, Version: null } => new(Command.PauseAutoClicker),
+            { Action: "rearmAutoClicker", Preferences: null, Version: null } => new(Command.RearmAutoClicker),
             { Action: "refreshBattery", Preferences: null, Version: null } => new(Command.RefreshBattery),
             { Action: "checkUpdates", Preferences: null, Version: null } => new(Command.CheckUpdates),
             { Action: "save", Preferences: { } prefs, Version: null } when prefs.ToPreferences() is { } value =>
@@ -57,7 +69,7 @@ public static class SettingsBridge
 
     public static string Write(int id, Response response) => JsonSerializer.Serialize(new { id, response }, Format);
 
-    private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version);
+    private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version, AutoClickerOptions? ClickerOptions);
 
     private sealed record WebPreferences(Appearance? Appearance, bool? StartWithWindows,
         bool? AutomaticUpdateChecks, WebBattery? Battery, bool? BatteryTrayIcons)

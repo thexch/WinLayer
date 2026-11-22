@@ -11,6 +11,8 @@ public sealed class SettingsBridgeTests
     [DataRow("status", Command.Status)]
     [DataRow("refreshBattery", Command.RefreshBattery)]
     [DataRow("checkUpdates", Command.CheckUpdates)]
+    [DataRow("pauseAutoClicker", Command.PauseAutoClicker)]
+    [DataRow("rearmAutoClicker", Command.RearmAutoClicker)]
     public void MapsOnlyAllowlistedAgentCommands(string action, Command command)
     {
         Assert.IsTrue(SettingsBridge.TryRead($$"""{"id":4,"action":"{{action}}"}""", out var id, out var request));
@@ -48,6 +50,22 @@ public sealed class SettingsBridgeTests
         Assert.IsFalse(SettingsBridge.TryRead(message.Replace("20", "51"), out _, out _));
         Assert.IsFalse(SettingsBridge.TryRead(message.Replace("\"dark\"", "2"), out _, out _));
         Assert.IsFalse(SettingsBridge.TryRead(message.PadRight(4097), out _, out _));
+    }
+
+    [TestMethod]
+    public void AutoClickerRequestIsTypedBoundedAndCannotRideOtherCommands()
+    {
+        const string message = """
+            {"id":5,"action":"saveAutoClicker","clickerOptions":{"enabled":true,"kind":"double","cps":200,
+              "shortcut":{"key":67,"modifiers":3},"mode":"hold","position":"fixed","x":-42,"y":90,"limit":"duration"}}
+            """;
+        Assert.IsTrue(SettingsBridge.TryRead(message, out _, out var request));
+        Assert.AreEqual(Command.SaveAutoClicker, request?.Command);
+        Assert.AreEqual(new ClickShortcut(67, 3), request?.ClickerOptions?.Shortcut);
+        Assert.AreEqual(ClickMode.Hold, request?.ClickerOptions?.Mode);
+        Assert.IsFalse(SettingsBridge.TryRead(message.Replace("200", "201"), out _, out _));
+        Assert.IsFalse(SettingsBridge.TryRead(message.Replace("saveAutoClicker", "status"), out _, out _));
+        Assert.IsFalse(SettingsBridge.TryRead(message.Replace("\"double\"", "3"), out _, out _));
     }
 
     [TestMethod]

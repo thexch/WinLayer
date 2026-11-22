@@ -4,8 +4,8 @@ using System.Text.Json;
 
 namespace WinLayer.Core;
 
-public enum Page { Dashboard, Battery, General, Updates }
-public enum Command { Status, OpenSettings, Save, RefreshBattery, CheckUpdates, InstallUpdate, Quit }
+public enum Page { Dashboard, Battery, General, Updates, AutoClicker }
+public enum Command { Status, OpenSettings, Save, RefreshBattery, CheckUpdates, InstallUpdate, Quit, SaveAutoClicker, PauseAutoClicker, RearmAutoClicker }
 public enum BatterySource { BluetoothLe, HyperXUsb }
 public enum BatteryState { Available, Unknown, Disconnected, Unsupported }
 public enum UpdateState { Unavailable, NotChecked, Current, Available, Error, Installing }
@@ -14,9 +14,9 @@ public sealed record BatteryDevice(string Id, string Name, BatteryState State, i
     BatterySource Source = BatterySource.BluetoothLe);
 public sealed record BatteryStatus(IReadOnlyList<BatteryDevice> Devices, DateTimeOffset? UpdatedAt = null, string? Error = null);
 public sealed record UpdateStatus(UpdateState State, string? Version = null, string? Info = null);
-public sealed record AgentStatus(Preferences Preferences, BatteryStatus Battery, UpdateStatus Updates, string Version, string? Error, Page RequestedPage, long NavigationRevision);
+public sealed record AgentStatus(Preferences Preferences, BatteryStatus Battery, UpdateStatus Updates, string Version, string? Error, Page RequestedPage, long NavigationRevision, AutoClickerStatus? AutoClicker = null);
 
-public sealed record Request(Command Command, Page Page = Page.Dashboard, Preferences? Preferences = null, string? Version = null, bool ReportProgress = false);
+public sealed record Request(Command Command, Page Page = Page.Dashboard, Preferences? Preferences = null, string? Version = null, bool ReportProgress = false, AutoClickerOptions? ClickerOptions = null);
 public sealed record Response(AgentStatus? Status = null, string? Error = null, int? Progress = null);
 
 public static class LocalProtocol

@@ -58,3 +58,13 @@ $agent = Get-Process WinLayer
 Activer le module entre ces mesures et fermer les réglages avant chaque échantillon. Garder une fenêtre de mesure supérieure à l’intervalle de secours testé et effectuer une série avec puis sans périphérique connecté. Pour mesurer un jeu, reproduire le même scénario et comparer l’agent arrêté, actif avec module désactivé, puis actif avec module activé. Ajouter un profil ETW/WPR sur les scénarios qui nécessitent d’attribuer des coûts à un composant. Les valeurs CPU du script représentent le pourcentage d’un cœur logique.
 
 [Métadonnées officielles du SDK](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json) · [Ciblage Windows depuis Linux](https://learn.microsoft.com/dotnet/core/tools/sdk-errors/netsdk1100) · [Outils de performance Windows](https://learn.microsoft.com/windows-hardware/test/wpt/)
+
+## Vérifier Auto Clicker sur Windows
+
+1. Ouvrir Auto Clicker et activer le module. Utiliser une fenêtre de test non élevée, avec une zone qui enregistre les clics sans exécuter d’action. Tester les boutons gauche, droit et molette, puis le double-clic.
+2. En mode Bascule, démarrer puis arrêter avec F6. En mode Maintien, relâcher F6, puis refaire le test avec Ctrl+Alt+C et relâcher un modificateur avant la touche principale. Répéter avec la fenêtre WinLayer fermée.
+3. À 1, 25 et 200 CPS, comparer le nombre reçu et les intervalles pour une série bornée. Vérifier un compte de 10, une durée de 2 secondes et l’absence de rafale après un réveil tardif. À 200 CPS, l’intervalle demandé est de 5 ms. La cadence réelle dépend de l’ordonnanceur et de la capacité de l’application cible à traiter les événements.
+4. Arrêter une série illimitée avec Ctrl+Alt+Maj+F10. L’état doit passer à **En pause** et F6 doit rester sans effet jusqu’au réarmement. Vérifier aussi la désactivation, la fermeture de l’agent et la réutilisation des deux combinaisons après désactivation.
+5. Essayer des coordonnées négatives sur un deuxième écran, à deux échelles DPI. Essayer un point hors écran et vérifier la mise en pause avec un message. Redémarrer WinLayer et vérifier les réglages sauvegardés, avec un module inactif tant que le raccourci n’a pas été utilisé.
+
+Les tests automatisés contrôlent la cadence sur une horloge déterministe, le nombre et la durée, les transitions des raccourcis et l’annulation. Le test du paquet vérifie la réservation Windows et la libération des raccourcis alors que WebView2 est fermé. Les clics sur le bureau et la réception de messages par la fenêtre cible sont à vérifier dans une session Windows interactive.

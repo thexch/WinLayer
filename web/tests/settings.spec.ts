@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
-import type { AgentStatus, Command } from '../src/bridge'
+import type { AgentStatus, AutoClickerOptions, Command } from '../src/bridge'
 
 const status: AgentStatus = {
   preferences: {
@@ -23,6 +23,12 @@ const status: AgentStatus = {
   requestedPage: 'dashboard', navigationRevision: 1, version: '2.0.0', error: null,
 }
 
+const clickerOptions: AutoClickerOptions = {
+  enabled: false, kind: 'left', cps: 10, shortcut: { key: 117, modifiers: 0 },
+  emergency: { key: 121, modifiers: 7 }, mode: 'toggle', position: 'cursor', x: 0, y: 0,
+  limit: 'unlimited', count: 100, durationSeconds: 10,
+}
+
 async function withAgent(page: Page, fixture: AgentStatus) {
   await page.addInitScript((initial) => {
     const agent = {
@@ -40,6 +46,17 @@ async function withAgent(page: Page, fixture: AgentStatus) {
           if (agent.rejectSave) error = 'L’enregistrement a échoué.'
           else agent.status.preferences = command.preferences
         }
+        if (command.action === 'saveAutoClicker') {
+          if (command.clickerOptions.shortcut.key === 119) error = 'Le raccourci F8 est indisponible.'
+          else {
+            agent.status.preferences.autoClicker = command.clickerOptions
+            if (!command.clickerOptions.enabled) agent.status.autoClicker = { state: 'idle', error: null }
+          }
+        }
+        if (command.action === 'pauseAutoClicker')
+          agent.status.autoClicker = { state: 'paused', error: null }
+        if (command.action === 'rearmAutoClicker')
+          agent.status.autoClicker = { state: 'idle', error: null }
         if (command.action === 'refreshBattery')
           agent.status.battery.updatedAt = new Date().toISOString()
         if (command.action === 'checkUpdates')
@@ -221,4 +238,48 @@ test('can disable taskbar percentages without disabling battery monitoring', asy
   await icons.click()
   await expect(icons).toHaveAttribute('aria-checked', 'false')
   await expect(page.getByRole('switch', { name: 'Surveiller les batteries' })).toHaveAttribute('aria-checked', 'true')
+})
+
+test('auto clicker saves settings, records keys safely, and reports conflicts and pause', async ({ page }) => {
+  await withAgent(page, {
+    ...status,
+    preferences: { ...status.preferences, autoClicker: clickerOptions },
+    autoClicker: { state: 'idle', error: null },
+  })
+  await sidebar(page).getByRole('button', { name: 'Auto Clicker' }).click()
+  await expect(page.getByRole('heading', { name: 'Auto Clicker' })).toBeVisible()
+  await capture(page, '09-auto-clicker.png')
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+
+  await page.getByLabel('Vitesse (CPS)').fill('200')
+  await page.getByLabel('Vitesse (CPS)').press('Enter')
+  await expect(page.getByText('5 ms par action')).toBeVisible()
+  await page.getByLabel('Type de clic').selectOption('double')
+  await expect(page.getByText('Un double-clic compte pour une action.')).toBeVisible()
+  await page.getByLabel('Mode', { exact: true }).selectOption('hold')
+  await expect(page.getByText('Maintenir pour cliquer')).toBeVisible()
+  await page.getByLabel('Position', { exact: true }).selectOption('fixed')
+  await page.getByLabel('Coordonnée X').fill('-256')
+  await page.getByLabel('Coordonnée X').press('Enter')
+  await expect(page.getByLabel('Coordonnée X')).toHaveValue('-256')
+  await page.getByLabel('Limite').selectOption('duration')
+  await expect(page.getByLabel('Durée maximale (s)')).toBeVisible()
+  await page.getByLabel('Limite').selectOption('count')
+  await expect(page.getByLabel('Nombre d’actions')).toBeVisible()
+
+  await page.getByRole('switch', { name: 'Activer Auto Clicker' }).click()
+  await expect(page.getByRole('switch', { name: 'Activer Auto Clicker' })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('button', { name: 'Enregistrer les touches · Activation', exact: true }).click()
+  const recording = page.getByRole('button', { name: 'Appuyez sur les touches… Activation' })
+  await expect(recording).toBeFocused()
+  await expect(page.getByText('En pause', { exact: true })).toBeVisible()
+  await recording.press('Control+Alt+c')
+  await expect(page.getByLabel('Activation', { exact: true })).toHaveValue('67')
+  await page.getByRole('button', { name: 'Enregistrer les touches · Activation', exact: true }).click()
+  await expect(recording).toBeFocused()
+  await recording.press('F8')
+  await expect(page.getByText('Le raccourci F8 est indisponible.')).toBeVisible()
+  await expect(page.getByLabel('Activation', { exact: true })).toHaveValue('67')
+  await page.getByRole('button', { name: 'Réarmer' }).click()
+  await expect(page.getByText('Inactif', { exact: true })).toBeVisible()
 })

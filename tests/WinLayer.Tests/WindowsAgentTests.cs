@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinLayer.Core;
 
@@ -60,6 +61,7 @@ public sealed class WindowsAgentTests
             Assert.IsTrue(settings.CloseMainWindow());
             await settings.WaitForExitAsync(timeout.Token);
             Assert.AreEqual(0, settings.ExitCode);
+            await VerifyAutoClickerWhileSettingsClosedAsync(timeout.Token);
             var afterClosing = await LocalProtocol.SendAsync(new(Command.Status), timeout.Token);
             Assert.AreEqual(version, afterClosing.Status?.Version);
             Assert.IsFalse(agent.HasExited);
@@ -92,6 +94,78 @@ public sealed class WindowsAgentTests
             }
         }
     }
+
+    private static async Task VerifyAutoClickerWhileSettingsClosedAsync(CancellationToken stop)
+    {
+        var options = new AutoClickerOptions { Enabled = true, Shortcut = new(0x82, 3), Emergency = new(0x83, 3) };
+        Assert.IsTrue(CanRegister(options.Shortcut));
+        var enabled = await LocalProtocol.SendAsync(new(Command.SaveAutoClicker, ClickerOptions: options), stop);
+        Assert.IsNull(enabled.Error);
+        Assert.AreEqual(options, enabled.Status?.Preferences.AutoClicker);
+        Assert.AreEqual(ClickState.Idle, enabled.Status?.AutoClicker?.State);
+        Assert.IsFalse(CanRegister(options.Shortcut));
+        Assert.IsFalse(CanRegister(options.Emergency));
+
+        // Reserve the candidate's emergency shortcut in another process, outside the agent's window.
+        var competing = new ClickShortcut(0x84, 3);
+        var candidate = options with { Shortcut = new(0x85, 3), Emergency = competing };
+        var rejected = await Task.Run(() =>
+        {
+            const int competingId = 15;
+            Assert.IsTrue(RegisterHotKey(IntPtr.Zero, competingId, (uint)competing.Modifiers, (uint)competing.Key));
+            try
+            {
+                return LocalProtocol.SendAsync(new(Command.SaveAutoClicker, ClickerOptions: candidate), stop)
+                    .GetAwaiter().GetResult();
+            }
+            finally
+            {
+                Assert.IsTrue(UnregisterHotKey(IntPtr.Zero, competingId));
+            }
+        }, stop);
+        Assert.IsNotNull(rejected.Error);
+        Assert.AreEqual(options, rejected.Status?.Preferences.AutoClicker);
+        Assert.IsTrue(CanRegister(candidate.Shortcut));
+        Assert.IsFalse(CanRegister(options.Shortcut));
+
+        var paused = await LocalProtocol.SendAsync(new(Command.PauseAutoClicker), stop);
+        Assert.AreEqual(ClickState.Paused, paused.Status?.AutoClicker?.State);
+        var rearmed = await LocalProtocol.SendAsync(new(Command.RearmAutoClicker), stop);
+        Assert.AreEqual(ClickState.Idle, rearmed.Status?.AutoClicker?.State);
+        var general = await LocalProtocol.SendAsync(new(Command.Save, Preferences: new Preferences
+        {
+            Appearance = enabled.Status!.Preferences.Appearance,
+            StartWithWindows = enabled.Status.Preferences.StartWithWindows,
+            Battery = enabled.Status.Preferences.Battery,
+            BatteryTrayIcons = enabled.Status.Preferences.BatteryTrayIcons,
+            AutomaticUpdateChecks = enabled.Status.Preferences.AutomaticUpdateChecks
+        }), stop);
+        Assert.IsNull(general.Error);
+        Assert.AreEqual(options, general.Status?.Preferences.AutoClicker);
+
+        var disabled = await LocalProtocol.SendAsync(new(Command.SaveAutoClicker, ClickerOptions: new()), stop);
+        Assert.IsNull(disabled.Error);
+        Assert.IsTrue(CanRegister(options.Shortcut));
+        Assert.IsTrue(CanRegister(options.Emergency));
+    }
+
+    private static bool CanRegister(ClickShortcut shortcut)
+    {
+        const int id = 14;
+        if (!RegisterHotKey(IntPtr.Zero, id, (uint)shortcut.Modifiers, (uint)shortcut.Key))
+            return false;
+
+        Assert.IsTrue(UnregisterHotKey(IntPtr.Zero, id));
+        return true;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterHotKey(IntPtr window, int id);
 
     private static async Task<(Preferences Original, Preferences Migrated)> UpgradeFromV1Async(
         string executable, string updatePackage, CancellationToken stop)

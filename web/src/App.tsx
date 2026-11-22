@@ -1,15 +1,17 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, BatteryCharging, BatteryLow, Bluetooth,
-  ChevronDown, CircleAlert, Headphones, LayoutGrid, Monitor, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon,
+  ChevronDown, CircleAlert, Headphones, LayoutGrid, Monitor, MousePointerClick, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon,
 } from 'lucide-react'
 import type { AgentStatus, Appearance, BatteryDevice, BatteryOptions, Page, Preferences } from './bridge'
+import { AutoClickerPage } from './AutoClickerPage'
 import { Range, Switch } from './controls'
 import { useAgent } from './useAgent'
 
 const navigation = [
   { id: 'dashboard', label: 'Vue d’ensemble', Icon: LayoutGrid },
   { id: 'battery', label: 'Périphériques', Icon: BatteryCharging },
+  { id: 'autoClicker', label: 'Auto Clicker', Icon: MousePointerClick },
   { id: 'general', label: 'Général', Icon: Settings2 },
   { id: 'updates', label: 'Mises à jour', Icon: ArrowDownToLine },
 ] as const
@@ -264,7 +266,7 @@ export function App() {
   useEffect(() => { document.documentElement.dataset.theme = appearance }, [appearance])
   useEffect(() => { main.current?.scrollTo({ top: 0 }) }, [page])
 
-  function save(next: Preferences) {
+  function save({ autoClicker: _autoClicker, ...next }: Preferences) {
     void act({ action: 'save', preferences: next }, 'Enregistrement…', 'Préférences enregistrées.')
   }
 
@@ -312,6 +314,15 @@ export function App() {
                 </details>}
               </section>
             </div>
+          </>}
+          {page === 'autoClicker' && <>
+            <Header title="Auto Clicker" description="Automatisez vos clics avec un raccourci global." />
+            {preferences?.autoClicker && status?.autoClicker ?
+              <AutoClickerPage options={preferences.autoClicker} status={status.autoClicker} canEdit={canEdit}
+                onSave={(clickerOptions) => { void act({ action: 'saveAutoClicker', clickerOptions }, 'Enregistrement…', 'Configuration enregistrée.') }}
+                onPause={() => act({ action: 'pauseAutoClicker' }, 'Mise en pause…')}
+                onRearm={() => { void act({ action: 'rearmAutoClicker' }, 'Réarmement…') }} /> :
+              <p className="fine">La configuration apparaîtra quand l’agent répondra.</p>}
           </>}
           {page === 'general' && <>
             <Header title="Général" description="Personnalisez l’apparence et le démarrage de WinLayer." />

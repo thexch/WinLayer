@@ -454,3 +454,39 @@ meter::-webkit-meter-optimum-value, meter::-webkit-meter-suboptimum-value, meter
 @media (max-width: 375px) {
   .update-progress { grid-column: 1 / -1; }
 }
+
+.clicker-layout { display: grid; grid-template-columns: minmax(205px, .75fr) minmax(0, 1.4fr); align-items: start; gap: 18px; }
+.clicker-console, .clicker-configuration {
+  display: grid; min-width: 0; gap: 14px; padding: 19px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.clicker-console-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.clicker-console-head h2 { font-size: 16px; font-weight: 800; }
+.clicker-keyline { display: grid; gap: 5px; padding: 2px 0; }
+.clicker-keyline > span:first-child { color: var(--muted); }
+.clicker-keyline > span:last-child { display: flex; flex-wrap: wrap; gap: 5px; }
+.clicker-keyline kbd {
+  display: inline-block; min-width: 27px; padding: 2px 6px; text-align: center; color: var(--ink);
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--quiet);
+}
+.clicker-console .button { justify-self: start; }
+.clicker-console .notice { margin: 0; }
+.clicker-fields { display: grid; gap: 13px; min-width: 0; padding: 8px 0 0; border-top: 1px solid var(--line); }
+.clicker-fields legend { padding-inline-end: 8px; font-weight: 800; }
+.clicker-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.clicker-grid label, .clicker-shortcut-head label { display: grid; gap: 4px; font-weight: 700; }
+.clicker-fields select, .clicker-fields input[type="number"] {
+  width: 100%; min-width: 0; min-height: 36px; padding: 5px 8px; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 7px; background: var(--canvas);
+}
+.clicker-number-input { display: flex; align-items: center; gap: 6px; }
+.clicker-shortcut { display: grid; gap: 8px; }
+.clicker-shortcut-head { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.clicker-shortcut-head label { flex: 1 1 106px; }
+.clicker-shortcut-head .button { min-height: 36px; }
+.clicker-modifiers { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.clicker-modifiers label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.clicker-modifiers input { accent-color: var(--accent); }
+
+@media (max-width: 880px) { .clicker-layout { grid-template-columns: 1fr; } }
+@media (max-width: 470px) { .clicker-grid { grid-template-columns: 1fr; } }

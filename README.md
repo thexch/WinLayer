@@ -13,6 +13,12 @@ Téléchargez `WinLayer-win-Setup.exe` depuis une [version stable de GitHub Rele
 - Activez **Démarrer avec Windows** dans **Général** si vous le souhaitez. Le démarrage automatique ouvre uniquement l’agent.
 - Cherchez les nouvelles versions dans **Mises à jour**. L’installation demande une confirmation et redémarre WinLayer. Les préférences sont stockées dans `%LOCALAPPDATA%\WinLayerData\preferences.json`.
 
+### Auto Clicker
+
+Activez le module dans **Auto Clicker**, puis choisissez le type de clic, la cadence de 1 à 200 CPS, la position et la limite éventuelle. Par défaut, **F6** démarre ou arrête la séquence en mode Bascule. En mode Maintien, gardez le raccourci enfoncé. **Ctrl+Alt+Maj+F10** met le module en pause jusqu’au réarmement. Les deux raccourcis sont modifiables et fonctionnent quand les réglages sont fermés. Les paramètres se sauvegardent automatiquement.
+
+Certaines applications filtrent les entrées simulées. Consultez les limites de Windows et le protocole de vérification. [Modules](docs/MODULES.md) · [Validation sur Windows](docs/DEVELOPMENT.md#vérifier-auto-clicker-sur-windows)
+
 ## Contribuer
 
 [Architecture](docs/ARCHITECTURE.md) · [Design V2](docs/DESIGN.md) · [Développement et mesures](docs/DEVELOPMENT.md) · [Modules](docs/MODULES.md) · [Installation et releases](docs/RELEASING.md) · [Skills Codex](docs/SKILLS.md)

@@ -1,5 +1,5 @@
 // This web contract is distinct from the resident agent's V1 named-pipe format.
-export type Page = 'dashboard' | 'battery' | 'general' | 'updates'
+export type Page = 'dashboard' | 'battery' | 'general' | 'updates' | 'autoClicker'
 export type Appearance = 'system' | 'light' | 'dark'
 
 export interface BatteryOptions {
@@ -9,12 +9,35 @@ export interface BatteryOptions {
   lowThreshold: number
 }
 
+export interface ClickShortcut { key: number; modifiers: number }
+
+export interface AutoClickerOptions {
+  enabled: boolean
+  kind: 'left' | 'right' | 'middle' | 'double'
+  cps: number
+  shortcut: ClickShortcut
+  emergency: ClickShortcut
+  mode: 'toggle' | 'hold'
+  position: 'cursor' | 'fixed'
+  x: number
+  y: number
+  limit: 'unlimited' | 'count' | 'duration'
+  count: number
+  durationSeconds: number
+}
+
+export interface AutoClickerStatus {
+  state: 'idle' | 'active' | 'paused'
+  error: string | null
+}
+
 export interface Preferences {
   appearance: Appearance
   startWithWindows: boolean
   automaticUpdateChecks: boolean
   batteryTrayIcons?: boolean
   battery: BatteryOptions
+  autoClicker?: AutoClickerOptions
 }
 
 export interface BatteryDevice {
@@ -37,10 +60,12 @@ export interface AgentStatus {
   error: string | null
   requestedPage: Page
   navigationRevision: number
+  autoClicker?: AutoClickerStatus
 }
 
 export type Command =
-  | { action: 'ready' | 'status' | 'refreshBattery' | 'checkUpdates' }
+  | { action: 'ready' | 'status' | 'refreshBattery' | 'checkUpdates' | 'pauseAutoClicker' | 'rearmAutoClicker' }
+  | { action: 'saveAutoClicker'; clickerOptions: AutoClickerOptions }
   | { action: 'save'; preferences: Preferences }
   | { action: 'installUpdate'; version: string }
 

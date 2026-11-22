@@ -26,11 +26,13 @@ public sealed record Preferences
     public bool AutomaticUpdateChecks { get; init; } = true;
     public bool BatteryTrayIcons { get; init; } = true;
     public BatteryOptions Battery { get; init; } = new();
+    public AutoClickerOptions AutoClicker { get; init; } = new();
 
     public Preferences Normalize() => this with
     {
         Appearance = Enum.IsDefined(Appearance) ? Appearance : Appearance.System,
-        Battery = (Battery ?? new()).Normalize()
+        Battery = (Battery ?? new()).Normalize(),
+        AutoClicker = AutoClicker is { } options && options.IsValid() ? options : new()
     };
 }
 

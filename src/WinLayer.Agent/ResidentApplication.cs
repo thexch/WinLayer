@@ -23,6 +23,7 @@ internal sealed class ResidentApplication : ApplicationContext
     private readonly ContextMenuStrip _menu = new();
     private readonly ToolStripMenuItem _statusMenu = new() { Enabled = false };
     private readonly DeviceBatteryModule _battery;
+    private readonly WindowsAutoClicker _clicker;
     private readonly Task _server;
     private readonly Task _autoCheck;
     private Process? _settings;
@@ -40,6 +41,7 @@ internal sealed class ResidentApplication : ApplicationContext
 
     public ResidentApplication(bool open, Page page, Stopwatch startup, bool measure)
     {
+        _clicker = new(_ui);
         _updateStatus = _updates.IsInstalled ? new(UpdateState.NotChecked) : new(UpdateState.Unavailable);
         _battery = new([() => new WindowsBluetoothProvider(), () => new WindowsHyperXProvider()],
             status => _ui.Post(_ => SetBatteryStatus(status), null),
@@ -57,6 +59,11 @@ internal sealed class ResidentApplication : ApplicationContext
 
         _menu.Items.Add("Ouvrir les paramètres", null, (_, _) => OpenSettings(Page.Dashboard));
         _menu.Items.Add("Device Battery", null, (_, _) => OpenSettings(Page.Battery));
+        _menu.Items.Add("Auto Clicker", null, (_, _) => OpenSettings(Page.AutoClicker));
+        var pauseClicker = new ToolStripMenuItem("Mettre Auto Clicker en pause", null, (_, _) => _clicker.Pause());
+        _menu.Items.Add(pauseClicker);
+        _menu.Opening += (_, _) => pauseClicker.Visible =
+            _preferences.AutoClicker.Enabled && _clicker.Status.State != ClickState.Paused;
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(_statusMenu);
         _menu.Items.Add(new ToolStripSeparator());
@@ -81,7 +88,7 @@ internal sealed class ResidentApplication : ApplicationContext
     private AgentStatus Snapshot() => new(_preferences, _batteryStatus, _updateStatus,
         _updates.CurrentVersion?.ToString() ??
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0",
-        _error, _requestedPage, _navigationRevision);
+        _error, _requestedPage, _navigationRevision, _clicker.Status);
 
     private async Task ServeAsync()
     {
@@ -96,6 +103,20 @@ internal sealed class ResidentApplication : ApplicationContext
             {
                 _error = "Les préférences ou le démarrage automatique n’ont pas pu être lus. Consultez le journal local.";
                 WindowsSettings.Log("Initialisation des préférences.", error);
+            }
+
+            try
+            {
+                _clicker.Reserve(_preferences.AutoClicker);
+                _clicker.Apply(_preferences.AutoClicker);
+            }
+            catch (InvalidOperationException error)
+            {
+                _clicker.RejectStartup(_preferences.AutoClicker, error.Message);
+            }
+            finally
+            {
+                _clicker.Prune();
             }
 
             await _battery.ApplyAsync(_preferences.Battery);
@@ -165,7 +186,22 @@ internal sealed class ResidentApplication : ApplicationContext
                     OpenSettings(request.Page);
                     break;
                 case Command.Save when request.Preferences is not null:
-                    await SaveAsync(request.Preferences.Normalize());
+                    await SaveAsync(request.Preferences.Normalize() with { AutoClicker = _preferences.AutoClicker });
+                    break;
+                case Command.SaveAutoClicker when request.ClickerOptions is { } clicker && clicker.IsValid():
+                    return await SaveClickerAsync(clicker);
+                case Command.PauseAutoClicker:
+                    _clicker.Pause();
+                    break;
+                case Command.RearmAutoClicker:
+                    try
+                    {
+                        _clicker.Rearm();
+                    }
+                    catch (InvalidOperationException error)
+                    {
+                        return new(Snapshot(), error.Message);
+                    }
                     break;
                 case Command.RefreshBattery:
                     if (!_battery.RequestRefresh())
@@ -191,6 +227,34 @@ internal sealed class ResidentApplication : ApplicationContext
             return new(Snapshot(), request.Command == Command.InstallUpdate
                 ? "Le téléchargement de la mise à jour a échoué. Vous pouvez le relancer."
                 : "L’action a échoué. Consultez le journal local.");
+        }
+    }
+
+    private async Task<Response> SaveClickerAsync(AutoClickerOptions options)
+    {
+        try
+        {
+            try
+            {
+                _clicker.Reserve(options);
+            }
+            catch (InvalidOperationException error)
+            {
+                return new(Snapshot(), error.Message);
+            }
+
+            var preferences = _preferences with { AutoClicker = options };
+            await _store.SaveAsync(preferences, _stop.Token);
+            if (!_quitting)
+            {
+                _preferences = preferences;
+                _clicker.Apply(options);
+            }
+            return new(Snapshot());
+        }
+        finally
+        {
+            _clicker.Prune();
         }
     }
 
@@ -451,6 +515,7 @@ internal sealed class ResidentApplication : ApplicationContext
             return;
 
         _quitting = true;
+        _clicker.Dispose();
         _tray.Visible = false;
         _batteryTray?.Dispose();
         _batteryTray = null;
@@ -477,6 +542,7 @@ internal sealed class ResidentApplication : ApplicationContext
         if (disposing)
         {
             _batteryTray?.Dispose();
+            _clicker.Dispose();
             _tray.Dispose();
             _menu.Dispose();
             _icon.Dispose();
