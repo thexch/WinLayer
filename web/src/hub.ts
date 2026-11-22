@@ -98,6 +98,8 @@ export interface HubStatus {
   metrics: HubMetrics | null
   pinned: { handle: number; title: string; app: string; pid: number }[]
   selectedColor: string | null
+  selectedRgb?: string | null
+  selectedHsl?: string | null
   measurement: string | null
   macroState: 'recording' | 'paused' | 'playing' | null
   recording: MacroStep[]

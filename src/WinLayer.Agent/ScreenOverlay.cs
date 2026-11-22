@@ -93,12 +93,30 @@ internal sealed class ScreenOverlay : HubOverlay
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        var move = (keyData & Keys.KeyCode) switch
+        {
+            Keys.Left => new Point(-1, 0), Keys.Right => new Point(1, 0),
+            Keys.Up => new Point(0, -1), Keys.Down => new Point(0, 1), _ => Point.Empty
+        };
+        if (!move.IsEmpty)
+        {
+            var distance = (keyData & Keys.Shift) != 0 ? 10 : 1;
+            var next = new Point(_cursor.X + move.X * distance, _cursor.Y + move.Y * distance);
+            var point = Global(next);
+            if (_frames.Any(frame => frame.Area.Contains(point)))
+            {
+                _cursor = next;
+                Cursor.Position = point;
+                Invalidate();
+            }
+            return true;
+        }
         if (keyData == Keys.Enter && !_ruler)
         {
             SelectColor();
             return true;
         }
-        if (_ruler && keyData is Keys.C or Keys.Enter && _first is { } a && _second is { } b)
+        if (_ruler && (keyData is Keys.C or Keys.Enter || keyData == (Keys.Control | Keys.C)) && _first is { } a && _second is { } b)
         {
             var value = HubCalculations.Measure(a.X, a.Y, b.X, b.Y, _options.RulerMode);
             TryCopy(value);
@@ -193,8 +211,11 @@ internal sealed class ScreenOverlay : HubOverlay
         var y = global.Y - frame.Area.Y;
         var source = Rectangle.Intersect(new Rectangle(x - 4, y - 4, 9, 9), new Rectangle(Point.Empty, frame.Bitmap.Size));
         var size = 9 * _options.Zoom;
-        var location = NearCursor(frame.Area, size + 10, size + 42);
-        graphics.FillRectangle(Brushes.Black, location.X, location.Y, size + 10, size + 42);
+        var pixel = frame.Bitmap.GetPixel(x, y);
+        var label = HubCalculations.FormatColor($"#{pixel.R:X2}{pixel.G:X2}{pixel.B:X2}", _options.ColorFormat);
+        var width = Math.Max(size + 10, TextRenderer.MeasureText(label, Font).Width + 16);
+        var location = NearCursor(frame.Area, width, size + 42);
+        graphics.FillRectangle(Brushes.Black, location.X, location.Y, width, size + 42);
         graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
         graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
         var left = location.X + 5 + (source.Left - x + 4) * _options.Zoom;
@@ -203,8 +224,7 @@ internal sealed class ScreenOverlay : HubOverlay
         var center = new Rectangle(location.X + 5 + 4 * _options.Zoom, location.Y + 5 + 4 * _options.Zoom, _options.Zoom, _options.Zoom);
         graphics.DrawRectangle(Pens.White, center);
         graphics.DrawRectangle(Pens.Black, Rectangle.Inflate(center, 1, 1));
-        var pixel = frame.Bitmap.GetPixel(x, y);
-        TextRenderer.DrawText(graphics, $"#{pixel.R:X2}{pixel.G:X2}{pixel.B:X2}", Font, new Point(location.X + 8, location.Y + size + 10), Color.White);
+        TextRenderer.DrawText(graphics, label, Font, new Point(location.X + 8, location.Y + size + 10), Color.White);
     }
 
     private Point NearCursor(Rectangle monitor, int width, int height)

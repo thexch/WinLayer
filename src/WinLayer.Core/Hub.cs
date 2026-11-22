@@ -153,4 +153,4 @@ public sealed record HubMetrics(NetworkAdapter[] Adapters, string? ActiveAdapter
     HubDisk[] Disks, HubProcess[] Processes, string? GpuName = null, long? GpuMemory = null, long? GpuUsed = null,
     int? Cores = null, int? CpuMHz = null, double?[]? LogicalCpu = null, double? DiskRead = null, double? DiskWrite = null);
 public sealed record HubStatus(Dictionary<HubTool, string> Errors, HubMetrics? Metrics, HubWindow[] Pinned,
-    string? SelectedColor, string? Measurement, string? MacroState, MacroStep[] Recording, AutoClickerStatus Repeater);
+    string? SelectedColor, string? Measurement, string? MacroState, MacroStep[] Recording, AutoClickerStatus Repeater, string? SelectedRgb = null, string? SelectedHsl = null);

@@ -34,7 +34,9 @@ internal sealed class WindowsHub : IDisposable
     }
 
     public HubStatus Snapshot() => new(new(_errors), _monitor.Status, _pins.Values.Select(value => value.Window).ToArray(),
-        _color, _measurement, _macros.State, _macros.Steps, _repeat.Status);
+        _color, _measurement, _macros.State, _macros.Steps, _repeat.Status,
+        _color is null ? null : HubCalculations.FormatColor(_color, ColorFormat.Rgb),
+        _color is null ? null : HubCalculations.FormatColor(_color, ColorFormat.Hsl));
 
     public void Initialize(HubPreferences preferences)
     {

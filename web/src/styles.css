@@ -492,8 +492,8 @@ meter::-webkit-meter-optimum-value, meter::-webkit-meter-suboptimum-value, meter
 @media (max-width: 470px) { .clicker-grid { grid-template-columns: 1fr; } }
 
 /* Windows Hub shares the existing WinLayer tokens for native-style surfaces and focus. */
-.sidebar nav { margin-top: clamp(13px, 5.5vh, 40px); min-height: 0; overflow-y: auto; padding: 3px; scrollbar-width: thin; }
-.sidebar .nav-link { min-height: clamp(33px, 6.2vh, 43px); }
+.sidebar nav { margin-top: clamp(12px, 4vh, 32px); gap: 3px; min-height: 0; overflow-y: auto; padding: 3px; scrollbar-width: thin; }
+.sidebar .nav-link { min-height: clamp(32px, 5vh, 38px); gap: 9px; font-size: 13px; }
 .sidebar .nav-link svg { flex: 0 0 auto; }
 .sidebar-foot { flex-shrink: 0; }
 .hub-tool-layout { display: grid; grid-template-columns: minmax(138px, .64fr) minmax(0, 2fr); align-items: start; gap: 22px; margin-block: 20px; }
@@ -579,3 +579,5 @@ meter::-webkit-meter-optimum-value, meter::-webkit-meter-suboptimum-value, meter
 }
 
 .hub-process-icon { width: 16px; height: 16px; object-fit: contain; }
+
+.hub-selected-formats { margin-bottom: 16px; }

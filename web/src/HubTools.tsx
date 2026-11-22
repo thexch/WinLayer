@@ -176,6 +176,11 @@ export function ScreenToolsPage(props: HubPageProps) {
           onChange={setShownPalette} />
       </div>
       {(shownPalette ? shown : [...new Set([...favorites, ...history])]).length === 0 && <p className="fine">Les couleurs prélevées apparaîtront ici.</p>}
+      {status.selectedColor && <dl className="hub-metric-pairs hub-selected-formats">
+        <div><dt>HEX</dt><dd>{status.selectedColor}</dd></div>
+        <div><dt>RGB</dt><dd>{status.selectedRgb ?? '—'}</dd></div>
+        <div><dt>HSL</dt><dd>{status.selectedHsl ?? '—'}</dd></div>
+      </dl>}
       <ul className="hub-swatches">
         {(shownPalette ? shown : [...new Set([...favorites, ...history])]).map(hex => <li key={hex}>
           <button type="button" onClick={() => { void run({ tool, action: 'copyColor', value: hex }) }} disabled={busy || !options.enabled}
