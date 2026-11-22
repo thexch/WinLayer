@@ -239,22 +239,35 @@ internal sealed class HubMonitoring : IDisposable
 
     private static (string?, int?, int?, string?, long?) HardwareIdentity()
     {
-        using var processor = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
-        using var display = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}");
-        var adapters = new List<(string Name, long? Memory)>();
-        foreach (var item in display?.GetSubKeyNames() ?? [])
+        var processor = HardwareValue(() =>
         {
-            using var key = display?.OpenSubKey(item);
-            if (key?.GetValue("DriverDesc") is not string name || key.GetValue("MatchingDeviceId") is not string)
-                continue;
-            var memory = key.GetValue("HardwareInformation.qwMemorySize") switch
+            using var key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
+            return (key?.GetValue("ProcessorNameString")?.ToString()?.Trim(), key?.GetValue("~MHz") as int?);
+        });
+        var adapters = HardwareValue(() =>
+        {
+            using var display = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}");
+            var values = new List<(string Name, long? Memory)>();
+            foreach (var item in display?.GetSubKeyNames() ?? [])
             {
-                long value => value,
-                byte[] { Length: >= 8 } bytes => BitConverter.ToInt64(bytes),
-                _ => (long?)null
-            };
-            adapters.Add((name, memory));
-        }
+                var info = HardwareValue(() =>
+                {
+                    using var key = display?.OpenSubKey(item);
+                    if (key?.GetValue("DriverDesc") is not string name || key.GetValue("MatchingDeviceId") is not string)
+                        return ((string?)null, (long?)null);
+                    var memory = key.GetValue("HardwareInformation.qwMemorySize") switch
+                    {
+                        long value => value,
+                        byte[] { Length: >= 8 } bytes => BitConverter.ToInt64(bytes),
+                        _ => (long?)null
+                    };
+                    return (name, memory);
+                });
+                if (info.Item1 is { } name)
+                    values.Add((name, info.Item2));
+            }
+            return values;
+        }) ?? [];
         uint size = 0;
         GetLogicalProcessorInformationEx(0, IntPtr.Zero, ref size);
         int? cores = null;
@@ -279,9 +292,18 @@ internal sealed class HubMonitoring : IDisposable
             }
             finally { Marshal.FreeHGlobal(buffer); }
         }
-        return (processor?.GetValue("ProcessorNameString")?.ToString()?.Trim(), processor?.GetValue("~MHz") as int?, cores,
+        return (processor.Item1 ?? Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER"), processor.Item2, cores,
             adapters.Count > 0 ? string.Join(" / ", adapters.Select(adapter => adapter.Name).Distinct()) : null,
             adapters.Count > 0 && adapters.All(adapter => adapter.Memory is > 0) ? adapters.Sum(adapter => adapter.Memory) : null);
+    }
+
+    private static T? HardwareValue<T>(Func<T> read)
+    {
+        try { return read(); }
+        catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            return default;
+        }
     }
 
     public async Task RefreshProcessesAsync()

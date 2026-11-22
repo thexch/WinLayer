@@ -134,6 +134,18 @@ public sealed class WindowsAgentTests
             var afterOpening = await LocalProtocol.SendAsync(new(Command.Status), stop);
             Assert.IsTrue(visible, afterOpening.Status?.Hub?.Errors.GetValueOrDefault(HubTool.Switcher) ?? "Switcher window not found.");
             Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Stop))).Error);
+            foreach (var tool in new[] { HubTool.Picker, HubTool.Ruler })
+            {
+                var screen = await Send(new(tool, HubAction.Open));
+                Assert.IsNull(screen.Error, $"{tool}");
+                Assert.IsNull((await Send(new(tool, HubAction.Stop))).Error);
+            }
+            var recording = await Send(new(HubTool.Macro, HubAction.Open));
+            Assert.IsNull(recording.Error);
+            Assert.IsTrue(recording.Status?.Hub?.MacroState is "recording" or "paused");
+            var stopped = await Send(new(HubTool.Macro, HubAction.Stop));
+            Assert.IsNull(stopped.Error);
+            Assert.IsNull(stopped.Status?.Hub?.MacroState);
 
             using var samples = CancellationTokenSource.CreateLinkedTokenSource(stop);
             samples.CancelAfter(TimeSpan.FromSeconds(12));
