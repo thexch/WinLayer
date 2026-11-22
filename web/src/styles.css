@@ -424,3 +424,33 @@ meter::-webkit-meter-optimum-value, meter::-webkit-meter-suboptimum-value, meter
   .status-dot, .presence-dot { background: CanvasText; }
   .switch-control > span { background: ButtonText; }
 }
+
+.update-progress {
+  grid-column: 2;
+  display: grid;
+  gap: 10px;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: var(--quiet);
+  color: var(--ink);
+}
+.update-progress > div { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.update-progress strong { color: var(--accent); }
+.update-progress progress { width: 100%; height: 8px; accent-color: var(--accent); }
+.update-progress progress[value] { appearance: none; }
+.update-progress progress[value]::-webkit-progress-bar { background: var(--line); border-radius: 8px; }
+.update-progress progress[value]::-webkit-progress-value { background: var(--accent); border-radius: 8px; }
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .nav-link svg, .button svg, .icon-button svg { transition: transform 155ms var(--ease); }
+  .nav-link:hover:not([aria-current="page"]) svg { transform: translateX(2px); }
+  .hero-button:hover svg, .icon-button:hover svg { transform: translate(2px, -1px); }
+  .button:not(:disabled):hover { transform: translateY(-1px); }
+  .button:not(:disabled):active { transform: translateY(1px) scale(.98); }
+  .switch-row:not(:disabled):hover .switch-control { outline: 3px solid var(--accent-tint); }
+  .theme-option:not(:has(:checked)):hover { background: var(--quiet); }
+}
+
+@media (max-width: 375px) {
+  .update-progress { grid-column: 1 / -1; }
+}

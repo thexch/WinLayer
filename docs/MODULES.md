@@ -21,3 +21,11 @@ Sur un PC Windows équipé du casque, brancher le dongle, allumer le casque, act
 [Protocole HyperHeadset](https://github.com/LennardKittner/HyperHeadset/blob/3652a5de38c100842e4b2f882af0e04897804638/src/devices/cloud_iii_wireless.rs) · [Implémentation Windows de référence](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/blob/1dc6bc5d77c7272f60ee478877e068677cb3ab9d/src/drivers/hyperx.cpp) · [Collections HID Windows](https://learn.microsoft.com/windows-hardware/drivers/hid/hid-collections)
 
 [API Bluetooth GATT de Windows](https://learn.microsoft.com/windows/apps/develop/devices-sensors/gatt-client) · [DeviceWatcher](https://learn.microsoft.com/uwp/api/windows.devices.enumeration.devicewatcher)
+
+### Batteries dans la zone de notification
+
+Les niveaux connus et connectés peuvent s’afficher dans la zone de notification Windows. Chaque icône affiche un pictogramme et le pourcentage. WinLayer reconnaît le casque HyperX et déduit d’autres formes courantes, telles que manette, clavier et souris, à partir du nom. Les autres appareils utilisent une icône de batterie. La disponibilité des niveaux dépend du fournisseur de batterie, indépendamment du pictogramme.
+
+Windows gère la visibilité et l’ordre des icônes. Pour afficher une icône dans la barre des tâches, ouvrir le menu **^** et la faire glisser vers la zone visible. Les identifiants stables permettent à Windows de mémoriser la préférence de visibilité. Le réglage **Pourcentages dans la barre des tâches** se trouve dans **Périphériques**. Cliquer une icône de batterie ouvre cet écran.
+
+[Méthode Windows pour déplacer les icônes de notification](https://support.microsoft.com/windows/customize-the-taskbar-in-windows-0657a50f-0cc7-dbfd-ae6b-05020b195b07)

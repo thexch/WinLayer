@@ -18,6 +18,7 @@ public sealed class CoreTests : IDisposable
         Assert.IsFalse(preferences.StartWithWindows);
         Assert.IsFalse(preferences.Battery.Enabled);
         Assert.IsTrue(preferences.Battery.Alerts);
+        Assert.IsTrue(preferences.BatteryTrayIcons);
         Assert.IsTrue(preferences.AutomaticUpdateChecks);
     }
 
@@ -30,6 +31,7 @@ public sealed class CoreTests : IDisposable
             StartWithWindows = true,
             Appearance = Appearance.Dark,
             AutomaticUpdateChecks = false,
+            BatteryTrayIcons = false,
             Battery = new() { Enabled = true, Alerts = false, RefreshMinutes = 1, LowThreshold = 100 }
         };
 

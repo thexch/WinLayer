@@ -24,6 +24,7 @@ public sealed record Preferences
     public Appearance Appearance { get; init; }
     public bool StartWithWindows { get; init; }
     public bool AutomaticUpdateChecks { get; init; } = true;
+    public bool BatteryTrayIcons { get; init; } = true;
     public BatteryOptions Battery { get; init; } = new();
 
     public Preferences Normalize() => this with

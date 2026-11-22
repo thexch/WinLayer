@@ -13,6 +13,7 @@ export interface Preferences {
   appearance: Appearance
   startWithWindows: boolean
   automaticUpdateChecks: boolean
+  batteryTrayIcons?: boolean
   battery: BatteryOptions
 }
 
@@ -46,6 +47,7 @@ export type Command =
 export interface Response {
   status: AgentStatus | null
   error: string | null
+  progress?: number | null
 }
 
 interface WebView {
@@ -67,7 +69,7 @@ function isReply(value: unknown): value is { id: number; response: Response } {
     'status' in value.response && 'error' in value.response
 }
 
-function exchange(command: Command): Promise<Response> {
+function exchange(command: Command, reportProgress?: (value: number) => void): Promise<Response> {
   const webview = window.chrome?.webview
   if (!webview)
     return Promise.resolve({ status: null, error: 'Ouvrez les réglages depuis l’application WinLayer.' })
@@ -82,8 +84,12 @@ function exchange(command: Command): Promise<Response> {
       resolve(response)
     }
     const receive = ({ data }: MessageEvent<unknown>) => {
-      if (isReply(data) && data.id === id)
+      if (!isReply(data) || data.id !== id) return
+      if (typeof data.response.progress === 'number') {
+        reportProgress?.(data.response.progress)
+      } else {
         finish(data.response)
+      }
     }
     const timer = window.setTimeout(() => finish({
       status: null, error: 'Le délai de réponse des réglages est dépassé. Réessayez.',
@@ -98,8 +104,8 @@ function exchange(command: Command): Promise<Response> {
   })
 }
 
-export function send(command: Command): Promise<Response> {
-  const response = queue.then(() => exchange(command))
+export function send(command: Command, reportProgress?: (value: number) => void): Promise<Response> {
+  const response = queue.then(() => exchange(command, reportProgress))
   queue = response.catch(() => undefined)
   return response
 }

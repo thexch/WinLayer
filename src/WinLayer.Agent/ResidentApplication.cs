@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading.Channels;
 using Velopack;
 using Velopack.Sources;
 using WinLayer.Core;
@@ -25,6 +26,7 @@ internal sealed class ResidentApplication : ApplicationContext
     private readonly Task _server;
     private readonly Task _autoCheck;
     private Process? _settings;
+    private PeripheralTrayIcons? _batteryTray;
     private Preferences _preferences = new();
     private BatteryStatus _batteryStatus = new([]);
     private UpdateStatus _updateStatus;
@@ -100,6 +102,7 @@ internal sealed class ResidentApplication : ApplicationContext
             while (!_stop.IsCancellationRequested)
             {
                 Command? completed = null;
+                var silentUpdate = false;
                 using (var pipe = new NamedPipeServerStream(LocalProtocol.PipeName, PipeDirection.InOut, 1,
                     PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly))
                 {
@@ -110,7 +113,8 @@ internal sealed class ResidentApplication : ApplicationContext
                         using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                         readTimeout.CancelAfter(TimeSpan.FromSeconds(3));
                         var request = await LocalProtocol.ReadAsync<Request>(pipe, readTimeout.Token);
-                        var response = await HandleAsync(request);
+                        silentUpdate = request.Command == Command.InstallUpdate && request.ReportProgress;
+                        var response = await HandleAsync(request, silentUpdate ? pipe : null);
                         updateHandedOff = request.Command == Command.InstallUpdate && response.Error is null;
                         using var writeTimeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                         writeTimeout.CancelAfter(TimeSpan.FromSeconds(3));
@@ -129,7 +133,7 @@ internal sealed class ResidentApplication : ApplicationContext
                 }
 
                 if (completed == Command.InstallUpdate)
-                    _ = FinishUpdateAsync();
+                    _ = FinishUpdateAsync(silentUpdate);
                 else if (completed == Command.Quit)
                     _ = StopAsync();
             }
@@ -145,7 +149,7 @@ internal sealed class ResidentApplication : ApplicationContext
         }
     }
 
-    private async Task<Response> HandleAsync(Request request)
+    private async Task<Response> HandleAsync(Request request, Stream? progressStream)
     {
         if (_quitting)
             return new(Error: "WinLayer est en cours d’arrêt.");
@@ -173,7 +177,7 @@ internal sealed class ResidentApplication : ApplicationContext
                 case Command.InstallUpdate when _available is not null &&
                     _updateStatus.State == UpdateState.Available &&
                     _available.TargetFullRelease.Version.ToString() == request.Version:
-                    await DownloadAsync(request.Version);
+                    await DownloadAsync(request.Version, progressStream);
                     break;
                 default:
                     return new(Snapshot(), "Cette action est indisponible. Actualisez les réglages et réessayez.");
@@ -209,6 +213,7 @@ internal sealed class ResidentApplication : ApplicationContext
         _preferences = preferences;
         _error = null;
         await _battery.ApplyAsync(preferences.Battery);
+        UpdateBatteryTray();
     }
 
     private async Task CheckAutomaticallyAsync()
@@ -273,7 +278,7 @@ internal sealed class ResidentApplication : ApplicationContext
         }
     }
 
-    private async Task DownloadAsync(string version)
+    private async Task DownloadAsync(string version, Stream? progressStream)
     {
         await _updateGate.WaitAsync(_stop.Token);
         try
@@ -287,7 +292,7 @@ internal sealed class ResidentApplication : ApplicationContext
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                 timeout.CancelAfter(TimeSpan.FromMinutes(5));
-                await _updates.DownloadUpdatesAsync(update, cancelToken: timeout.Token);
+                await DownloadWithProgressAsync(update, progressStream, timeout.Token);
             }
             catch
             {
@@ -301,7 +306,49 @@ internal sealed class ResidentApplication : ApplicationContext
         }
     }
 
-    private async Task FinishUpdateAsync()
+    private async Task DownloadWithProgressAsync(UpdateInfo update, Stream? stream, CancellationToken cancellationToken)
+    {
+        if (stream is null)
+        {
+            await _updates.DownloadUpdatesAsync(update, cancelToken: cancellationToken);
+            return;
+        }
+
+        var progress = Channel.CreateBounded<int>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+        var relay = RelayProgressAsync(stream, progress.Reader, cancellationToken);
+        try
+        {
+            await _updates.DownloadUpdatesAsync(update, value => progress.Writer.TryWrite(value), cancellationToken);
+        }
+        finally
+        {
+            progress.Writer.TryComplete();
+            await relay;
+        }
+    }
+
+    private static async Task RelayProgressAsync(Stream stream, ChannelReader<int> progress, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var value in progress.ReadAllAsync(cancellationToken))
+            {
+                using var replyTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                replyTimeout.CancelAfter(TimeSpan.FromSeconds(3));
+                await LocalProtocol.WriteAsync(stream, new Response(Progress: value), replyTimeout.Token);
+            }
+        }
+        catch (Exception error) when (error is IOException or OperationCanceledException)
+        {
+            // Closing the settings window disconnects the client. The final reply controls handoff.
+        }
+    }
+
+    private async Task FinishUpdateAsync(bool silent)
     {
         var target = _available!.TargetFullRelease;
         try
@@ -316,7 +363,7 @@ internal sealed class ResidentApplication : ApplicationContext
             if (_quitting)
                 return;
 
-            _updates.WaitExitThenApplyUpdates(target, restart: true);
+            _updates.WaitExitThenApplyUpdates(target, silent: silent, restart: true);
             await StopAsync();
         }
         catch (OperationCanceledException) when (_quitting)
@@ -361,7 +408,22 @@ internal sealed class ResidentApplication : ApplicationContext
         if (_quitting || (!_preferences.Battery.Enabled && status.UpdatedAt is not null))
             return;
         _batteryStatus = status;
+        UpdateBatteryTray();
         UpdateMenu();
+    }
+
+    private void UpdateBatteryTray()
+    {
+        if (!_preferences.Battery.Enabled || !_preferences.BatteryTrayIcons)
+        {
+            _batteryTray?.Dispose();
+            _batteryTray = null;
+            return;
+        }
+
+        if (_batteryTray is null && _batteryStatus.Devices.Any(device => BatteryTrayDisplay.FromDevice(device).HasValue))
+            _batteryTray = new PeripheralTrayIcons(() => OpenSettings(Page.Battery));
+        _batteryTray?.Update(_batteryStatus.Devices);
     }
 
     private void UpdateMenu()
@@ -387,6 +449,8 @@ internal sealed class ResidentApplication : ApplicationContext
 
         _quitting = true;
         _tray.Visible = false;
+        _batteryTray?.Dispose();
+        _batteryTray = null;
         try
         {
             await _stop.CancelAsync();
@@ -409,6 +473,7 @@ internal sealed class ResidentApplication : ApplicationContext
     {
         if (disposing)
         {
+            _batteryTray?.Dispose();
             _tray.Dispose();
             _menu.Dispose();
             _icon.Dispose();

@@ -49,7 +49,7 @@ public static class SettingsBridge
                 new(Command.Save, Preferences: value),
             { Action: "installUpdate", Preferences: null, Version: { Length: > 0 and <= 128 } version }
                 when Version.TryParse(version, out var parsed) && parsed is { Build: >= 0, Revision: -1 } =>
-                new(Command.InstallUpdate, Version: version),
+                new(Command.InstallUpdate, Version: version, ReportProgress: true),
             _ => null
         };
         return request is not null;
@@ -60,7 +60,7 @@ public static class SettingsBridge
     private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version);
 
     private sealed record WebPreferences(Appearance? Appearance, bool? StartWithWindows,
-        bool? AutomaticUpdateChecks, WebBattery? Battery)
+        bool? AutomaticUpdateChecks, WebBattery? Battery, bool? BatteryTrayIcons)
     {
         public Preferences? ToPreferences()
         {
@@ -74,6 +74,7 @@ public static class SettingsBridge
                 Appearance = appearance,
                 StartWithWindows = startup,
                 AutomaticUpdateChecks = updates,
+                BatteryTrayIcons = BatteryTrayIcons ?? true,
                 Battery = new BatteryOptions
                 {
                     Enabled = enabled,

@@ -14,3 +14,9 @@ L’aperçu donne le premier plan au module actif dans une composition asymétri
 | Accessibilité | Navigation clavier, focus visible, lien d’évitement, labels pour les icônes, retour d’action annoncé et mode contraste élevé. |
 
 Les variables CSS dans `web/src/styles.css` sont la source des couleurs et des styles. Les composants partagés de contrôle restent dans `web/src/controls.tsx`. Le module de confirmation charge Radix et Motion à la demande. Le kit shadcn/ui serait redondant pour ces composants, avec des primitives natives et Radix qui couvrent les besoins de la V2.
+
+## Affinements de la V2.2
+
+La barre de titre Windows prend les couleurs du thème enregistré via DWM et conserve les commandes système. Le contraste élevé rétablit les couleurs de Windows. Les boutons, liens et interrupteurs répondent par une légère translation ou un changement d’état au survol et à la pression. Les mouvements sont coupés quand Windows demande de réduire les animations.
+
+La page **Mises à jour** affiche la progression émise par Velopack pendant le téléchargement. Une fois le paquet vérifié, WinLayer ferme la fenêtre, demande à Velopack de l’appliquer silencieusement et redémarre. Le premier passage depuis une ancienne version d’agent peut encore présenter la fenêtre Velopack d’origine.

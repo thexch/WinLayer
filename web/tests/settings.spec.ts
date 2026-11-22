@@ -45,6 +45,16 @@ async function withAgent(page: Page, fixture: AgentStatus) {
         if (command.action === 'checkUpdates')
           agent.status.updates = { state: 'available', version: '2.0.1', info: null }
 
+        if (command.action === 'installUpdate') {
+          queueMicrotask(() => transport.dispatchEvent(new MessageEvent('message', {
+            data: { id: command.id, response: { status: null, error: null, progress: 42 } },
+          })))
+          setTimeout(() => transport.dispatchEvent(new MessageEvent('message', {
+            data: { id: command.id, response: { status: null, error: 'Installation interrompue.' } },
+          })), 1500)
+          return
+        }
+
         queueMicrotask(() => transport.dispatchEvent(new MessageEvent('message', {
           data: {
             id: command.id,
@@ -146,6 +156,7 @@ test('update installation waits for keyboard-accessible confirmation', async ({ 
   await expect(install).toBeFocused()
   await install.press('Enter')
   await modal.getByRole('button', { name: 'Installer et redémarrer' }).click()
+  await expect(page.getByRole('progressbar', { name: 'Téléchargement de la mise à jour' })).toHaveAttribute('value', '42')
   const calls = await page.evaluate(() => {
     const { __testAgent } = window as unknown as { __testAgent: { received: Command[] } }
     return __testAgent.received.filter(({ action }) => action === 'installUpdate')
@@ -199,4 +210,15 @@ test('shows the HyperX USB battery even when another source is unavailable', asy
   await expect(page.getByText('Dongle USB 2,4 GHz · Déconnecté')).toBeVisible()
   await expect(page.getByRole('meter', { name: 'Charge de HyperX Cloud III Wireless' })).toHaveAttribute('value', '0')
   await expect(page.getByRole('meter')).toHaveCount(1)
+})
+
+
+test('can disable taskbar percentages without disabling battery monitoring', async ({ page }) => {
+  await withAgent(page, status)
+  await sidebar(page).getByRole('button', { name: 'Périphériques' }).click()
+  const icons = page.getByRole('switch', { name: 'Pourcentages dans la barre des tâches' })
+  await expect(icons).toHaveAttribute('aria-checked', 'true')
+  await icons.click()
+  await expect(icons).toHaveAttribute('aria-checked', 'false')
+  await expect(page.getByRole('switch', { name: 'Surveiller les batteries' })).toHaveAttribute('aria-checked', 'true')
 })

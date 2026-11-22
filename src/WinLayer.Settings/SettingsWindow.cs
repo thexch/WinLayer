@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using WinLayer.Core;
+using Appearance = WinLayer.Core.Appearance;
 
 namespace WinLayer.Settings;
 
@@ -21,6 +22,7 @@ internal sealed class SettingsWindow : Form
     private bool _receivedStatus;
     private bool _receiving;
     private bool _closed;
+    private Appearance _captionAppearance;
 
     public SettingsWindow()
     {
@@ -31,6 +33,19 @@ internal sealed class SettingsWindow : Form
         ClientSize = new Size(1100, 735);
         Controls.Add(_browser);
         Controls.Add(_loading);
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        CaptionTheme.Apply(Handle, _captionAppearance);
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        base.WndProc(ref message);
+        if (IsHandleCreated && message.Msg is 0x001A or 0x031A)
+            CaptionTheme.Apply(Handle, _captionAppearance);
     }
 
     protected override async void OnShown(EventArgs e)
@@ -153,7 +168,9 @@ internal sealed class SettingsWindow : Form
             Response response;
             try
             {
-                response = await LocalProtocol.SendAsync(request, timeout.Token);
+                response = await LocalProtocol.SendAsync(request, timeout.Token, request.ReportProgress
+                    ? value => { if (!_closed) Reply(id, new(Progress: value)); }
+                    : null);
             }
             catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException
                 or UnauthorizedAccessException or JsonException)
@@ -167,7 +184,14 @@ internal sealed class SettingsWindow : Form
             if (request.Command == Command.Status)
                 _receivedStatus = true;
             if (response.Status is { } status)
+            {
                 ActivateForNavigation(status.NavigationRevision);
+                if (_captionAppearance != status.Preferences.Appearance)
+                {
+                    _captionAppearance = status.Preferences.Appearance;
+                    CaptionTheme.Apply(Handle, _captionAppearance);
+                }
+            }
 
             Reply(id, response);
             if (request.Command == Command.InstallUpdate && response is { Error: null, Status.Updates.State: UpdateState.Installing })

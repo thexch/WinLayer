@@ -7,6 +7,7 @@ export function useAgent() {
   const [connection, setConnection] = useState<'opening' | 'connected' | 'offline'>('opening')
   const [feedback, setFeedback] = useState('')
   const [busy, setBusy] = useState<Command['action'] | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
   const active = useRef(false)
   const revision = useRef<number | null>(null)
   const refreshStarted = useRef<number | null>(null)
@@ -54,11 +55,13 @@ export function useAgent() {
     active.current = true
     setBusy(command.action)
     setFeedback(pending)
+    if (command.action === 'installUpdate')
+      setDownloadProgress(null)
     if (command.action === 'refreshBattery')
       refreshStarted.current = Date.now()
 
     try {
-      const response = await send(command)
+      const response = await send(command, command.action === 'installUpdate' ? setDownloadProgress : undefined)
       if (!response.status) setConnection('offline')
       else accept(response.status)
       if (response.error) {
@@ -79,5 +82,5 @@ export function useAgent() {
     if (!active.current) setFeedback('')
   }
 
-  return { status, page, connection, feedback, busy, go, act }
+  return { status, page, connection, feedback, busy, downloadProgress, go, act }
 }

@@ -16,21 +16,35 @@ public sealed record BatteryStatus(IReadOnlyList<BatteryDevice> Devices, DateTim
 public sealed record UpdateStatus(UpdateState State, string? Version = null, string? Info = null);
 public sealed record AgentStatus(Preferences Preferences, BatteryStatus Battery, UpdateStatus Updates, string Version, string? Error, Page RequestedPage, long NavigationRevision);
 
-public sealed record Request(Command Command, Page Page = Page.Dashboard, Preferences? Preferences = null, string? Version = null);
-public sealed record Response(AgentStatus? Status = null, string? Error = null);
+public sealed record Request(Command Command, Page Page = Page.Dashboard, Preferences? Preferences = null, string? Version = null, bool ReportProgress = false);
+public sealed record Response(AgentStatus? Status = null, string? Error = null, int? Progress = null);
 
 public static class LocalProtocol
 {
     private const int MaximumMessageBytes = 1_048_576;
     public static string PipeName { get; } = $"WinLayer.v1.{Environment.UserName}.{CurrentSession()}";
 
-    public static async Task<Response> SendAsync(Request request, CancellationToken cancellationToken)
+    public static async Task<Response> SendAsync(Request request, CancellationToken cancellationToken,
+        Action<int>? progress = null)
     {
         using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         await pipe.ConnectAsync(2500, cancellationToken);
         await WriteAsync(pipe, request, cancellationToken);
-        return await ReadAsync<Response>(pipe, cancellationToken);
+        return await ReadResponseAsync(pipe, progress, cancellationToken);
+    }
+
+    public static async Task<Response> ReadResponseAsync(Stream stream, Action<int>? progress, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var response = await ReadAsync<Response>(stream, cancellationToken);
+            if (response.Progress is not int value)
+                return response;
+
+            if (value is >= 0 and <= 100)
+                progress?.Invoke(value);
+        }
     }
 
     public static async Task<T> ReadAsync<T>(Stream stream, CancellationToken cancellationToken)

@@ -209,8 +209,9 @@ function GeneralForm({ preferences, canEdit, onSave, onPreview }: {
   </form>
 }
 
-function UpdatePage({ status, canEdit, onCheck, onInstall }: {
+function UpdatePage({ status, canEdit, onCheck, onInstall, downloading, progress }: {
   status?: AgentStatus; canEdit: boolean; onCheck: () => void; onInstall: (version: string) => void
+  downloading: boolean; progress: number | null
 }) {
   const update = status?.updates
   const [title, description] = {
@@ -231,6 +232,11 @@ function UpdatePage({ status, canEdit, onCheck, onInstall }: {
         <p>{!status ? 'Ouvrez les réglages depuis l’agent WinLayer.' : update?.info ?? description}</p>
         {status && <p className="fine mono">Version installée {status.version}</p>}
       </div>
+      {downloading && <div className="update-progress">
+        <div><span>{progress === 100 ? 'Préparation du redémarrage…' : 'Téléchargement du paquet'}</span>
+          {progress !== null && <strong className="mono">{progress} %</strong>}</div>
+        <progress aria-label="Téléchargement de la mise à jour" max={100} value={progress ?? undefined} />
+      </div>}
       <div className="update-actions">
         <button type="button" className="button secondary" onClick={onCheck}
           disabled={!canEdit || !update || update.state === 'unavailable' || update.state === 'installing'}>
@@ -247,7 +253,7 @@ function UpdatePage({ status, canEdit, onCheck, onInstall }: {
 }
 
 export function App() {
-  const { status, page, connection, feedback, busy, go, act } = useAgent()
+  const { status, page, connection, feedback, busy, downloadProgress, go, act } = useAgent()
   const [preview, setPreview] = useState<Appearance>()
   const main = useRef<HTMLElement>(null)
   const preferences = status?.preferences
@@ -295,6 +301,10 @@ export function App() {
                 <div className="section-heading"><h2 id="battery-options">Device Battery</h2><BatteryLow size={20} aria-hidden="true" /></div>
                 <Switch label="Surveiller les batteries" checked={options?.enabled ?? false} disabled={!canEdit || !options}
                   onChange={(enabled) => { if (preferences && options) save({ ...preferences, battery: { ...options, enabled } }) }} />
+                <Switch label="Pourcentages dans la barre des tâches" checked={preferences?.batteryTrayIcons ?? true}
+                  description="Déplacez les icônes du menu ^ vers la zone visible de Windows."
+                  disabled={!canEdit || !options?.enabled}
+                  onChange={(batteryTrayIcons) => { if (preferences) save({ ...preferences, batteryTrayIcons }) }} />
                 {options && <details className="settings-disclosure">
                   <summary><SlidersHorizontal size={18} aria-hidden="true" /> Configurer la lecture <ChevronDown size={18} aria-hidden="true" /></summary>
                   <BatteryForm key={JSON.stringify(options)} options={options} canEdit={canEdit}
@@ -309,7 +319,7 @@ export function App() {
               preferences={preferences} canEdit={canEdit} onSave={save} onPreview={setPreview} /> :
               <p className="fine">Les préférences apparaîtront quand l’agent répondra.</p>}
           </>}
-          {page === 'updates' && <UpdatePage status={status} canEdit={canEdit}
+          {page === 'updates' && <UpdatePage status={status} canEdit={canEdit} downloading={busy === 'installUpdate'} progress={downloadProgress}
             onCheck={() => { void act({ action: 'checkUpdates' }, 'Recherche de mises à jour…') }}
             onInstall={(version) => { void act({ action: 'installUpdate', version }, `Téléchargement de WinLayer ${version}…`) }} />}
           <div className="feedback" role="status" aria-live="polite">{feedback}</div>

@@ -56,7 +56,25 @@ public sealed class SettingsBridgeTests
         Assert.IsTrue(SettingsBridge.TryRead("""{"id":1,"action":"ready"}""", out _, out var ready));
         Assert.IsNull(ready);
         Assert.IsTrue(SettingsBridge.TryRead("""{"id":2,"action":"installUpdate","version":"2.0.0"}""", out _, out var update));
-        Assert.AreEqual(new Request(Command.InstallUpdate, Version: "2.0.0"), update);
+        Assert.AreEqual(new Request(Command.InstallUpdate, Version: "2.0.0", ReportProgress: true), update);
+    }
+
+    [TestMethod]
+    public async Task UpdateProgressFramesKeepThePipeOpenUntilTheFinalResponse()
+    {
+        using var stream = new MemoryStream();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await LocalProtocol.WriteAsync(stream, new Response(Progress: 42), timeout.Token);
+        await LocalProtocol.WriteAsync(stream, new Response(Progress: 101), timeout.Token);
+        await LocalProtocol.WriteAsync(stream, new Response(Progress: 100), timeout.Token);
+        await LocalProtocol.WriteAsync(stream, new Response(Error: "Update failed."), timeout.Token);
+        stream.Position = 0;
+        var progress = new List<int>();
+
+        var final = await LocalProtocol.ReadResponseAsync(stream, progress.Add, timeout.Token);
+
+        CollectionAssert.AreEqual(new[] { 42, 100 }, progress);
+        Assert.AreEqual("Update failed.", final.Error);
     }
 
     [TestMethod]
