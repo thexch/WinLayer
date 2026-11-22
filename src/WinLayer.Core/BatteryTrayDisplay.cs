@@ -1,11 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace WinLayer.Core;
 
 public enum BatteryTrayGlyph { Battery, Headset, Gamepad, Mouse, Keyboard }
 
-public readonly record struct BatteryTrayDisplay(Guid IconId, BatteryTrayGlyph Glyph, int Percentage, string Tooltip)
+public readonly record struct BatteryTrayDisplay(BatteryTrayGlyph Glyph, int Percentage)
 {
     public static BatteryTrayDisplay? FromDevice(BatteryDevice device)
     {
@@ -18,9 +15,7 @@ public readonly record struct BatteryTrayDisplay(Guid IconId, BatteryTrayGlyph G
             Has(name, "controller", "gamepad", "manette", "dualsense", "dualshock", "xbox", "joy-con", "8bitdo") ? BatteryTrayGlyph.Gamepad :
             Has(name, "mouse", "souris", "mx master", "mx anywhere", "magic mouse") ? BatteryTrayGlyph.Mouse :
             Has(name, "keyboard", "clavier", "mx keys") ? BatteryTrayGlyph.Keyboard : BatteryTrayGlyph.Battery;
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"WinLayer.Battery.{device.Id.ToUpperInvariant()}"));
-        return new(new Guid(hash.AsSpan(0, 16)), glyph, device.Percentage.Value,
-            $"{name} · {device.Percentage.Value} %");
+        return new(glyph, device.Percentage.Value);
     }
 
     private static bool Has(string name, params string[] terms) =>

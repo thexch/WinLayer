@@ -18,19 +18,15 @@ public sealed class BatteryTrayDisplayTests
         Assert.IsNotNull(display);
         Assert.AreEqual(glyph, display.Value.Glyph);
         Assert.AreEqual(100, display.Value.Percentage);
-        Assert.AreEqual($"{name} · 100 %", display.Value.Tooltip);
     }
 
     [TestMethod]
-    public void RecognizesHyperXAndKeepsTheIconIdentityWhenTheLevelChanges()
+    public void RecognizesHyperXAndRepresentsZeroPercent()
     {
         var headset = new BatteryDevice("hyperx:test", "Cloud III", BatteryState.Available, 0, BatterySource.HyperXUsb);
         var before = BatteryTrayDisplay.FromDevice(headset)!.Value;
-        var after = BatteryTrayDisplay.FromDevice(headset with { Id = "HYPERX:TEST", Percentage = 12 })!.Value;
         Assert.AreEqual(BatteryTrayGlyph.Headset, before.Glyph);
         Assert.AreEqual(0, before.Percentage);
-        Assert.AreEqual(before.IconId, after.IconId);
-        Assert.AreNotEqual(before.IconId, BatteryTrayDisplay.FromDevice(headset with { Id = "other" })!.Value.IconId);
     }
 
     [TestMethod]

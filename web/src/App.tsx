@@ -301,8 +301,8 @@ export function App() {
                 <div className="section-heading"><h2 id="battery-options">Device Battery</h2><BatteryLow size={20} aria-hidden="true" /></div>
                 <Switch label="Surveiller les batteries" checked={options?.enabled ?? false} disabled={!canEdit || !options}
                   onChange={(enabled) => { if (preferences && options) save({ ...preferences, battery: { ...options, enabled } }) }} />
-                <Switch label="Pourcentages dans la barre des tâches" checked={preferences?.batteryTrayIcons ?? true}
-                  description="Déplacez les icônes du menu ^ vers la zone visible de Windows."
+                <Switch label="Bandeau batterie dans la barre des tâches" checked={preferences?.batteryTrayIcons ?? true}
+                  description="Affiche les pictogrammes et les pourcentages à gauche de la zone de notification."
                   disabled={!canEdit || !options?.enabled}
                   onChange={(batteryTrayIcons) => { if (preferences) save({ ...preferences, batteryTrayIcons }) }} />
                 {options && <details className="settings-disclosure">

@@ -26,7 +26,7 @@ internal sealed class ResidentApplication : ApplicationContext
     private readonly Task _server;
     private readonly Task _autoCheck;
     private Process? _settings;
-    private PeripheralTrayIcons? _batteryTray;
+    private TaskbarBatteryStrip? _batteryTray;
     private Preferences _preferences = new();
     private BatteryStatus _batteryStatus = new([]);
     private UpdateStatus _updateStatus;
@@ -414,16 +414,19 @@ internal sealed class ResidentApplication : ApplicationContext
 
     private void UpdateBatteryTray()
     {
-        if (!_preferences.Battery.Enabled || !_preferences.BatteryTrayIcons)
+        var devices = _preferences.Battery.Enabled && _preferences.BatteryTrayIcons
+            ? _batteryStatus.Devices.Select(BatteryTrayDisplay.FromDevice)
+                .OfType<BatteryTrayDisplay>().ToArray()
+            : [];
+        if (devices.Length == 0)
         {
             _batteryTray?.Dispose();
             _batteryTray = null;
             return;
         }
 
-        if (_batteryTray is null && _batteryStatus.Devices.Any(device => BatteryTrayDisplay.FromDevice(device).HasValue))
-            _batteryTray = new PeripheralTrayIcons(() => OpenSettings(Page.Battery));
-        _batteryTray?.Update(_batteryStatus.Devices);
+        _batteryTray ??= new TaskbarBatteryStrip(() => OpenSettings(Page.Battery));
+        _batteryTray.Update(devices);
     }
 
     private void UpdateMenu()

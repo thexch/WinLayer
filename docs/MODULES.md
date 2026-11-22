@@ -22,10 +22,12 @@ Sur un PC Windows équipé du casque, brancher le dongle, allumer le casque, act
 
 [API Bluetooth GATT de Windows](https://learn.microsoft.com/windows/apps/develop/devices-sensors/gatt-client) · [DeviceWatcher](https://learn.microsoft.com/uwp/api/windows.devices.enumeration.devicewatcher)
 
-### Batteries dans la zone de notification
+### Bandeau batterie dans la barre des tâches
 
-Les niveaux connus et connectés peuvent s’afficher dans la zone de notification Windows. Chaque icône affiche un pictogramme et le pourcentage. WinLayer reconnaît le casque HyperX et déduit d’autres formes courantes, telles que manette, clavier et souris, à partir du nom. Les autres appareils utilisent une icône de batterie. La disponibilité des niveaux dépend du fournisseur de batterie, indépendamment du pictogramme.
+Le bandeau place un pictogramme et le pourcentage côte à côte, juste avant la zone de notification de la barre des tâches principale. WinLayer reconnaît le casque HyperX et déduit les formes courantes à partir du nom du périphérique. Les autres modèles utilisent un pictogramme de batterie. Seuls les niveaux connus des périphériques connectés sont affichés.
 
-Windows gère la visibilité et l’ordre des icônes. Pour afficher une icône dans la barre des tâches, ouvrir le menu **^** et la faire glisser vers la zone visible. Les identifiants stables permettent à Windows de mémoriser la préférence de visibilité. Le réglage **Pourcentages dans la barre des tâches** se trouve dans **Périphériques**. Cliquer une icône de batterie ouvre cet écran.
+Le réglage **Bandeau batterie dans la barre des tâches** se trouve dans **Périphériques**. Un clic sur le bandeau ouvre cet écran. La préférence d’affichage de la V2.2 est reprise.
 
-[Méthode Windows pour déplacer les icônes de notification](https://support.microsoft.com/windows/customize-the-taskbar-in-windows-0657a50f-0cc7-dbfd-ae6b-05020b195b07)
+WinLayer crée sa propre fenêtre enfant translucide sous `Shell_TrayWnd` et la place avant `TrayNotifyWnd`. Il garde les API de dessin et le code dans son propre processus. La mise en page s’adapte au DPI et suit les changements de position ainsi que les redémarrages d’Explorer. Une barre verticale ou une zone de notification introuvable masque le bandeau. Windows ne réserve pas d’espace pour cette fenêtre sur une barre très remplie. Le placement et la lisibilité se vérifient sur un bureau Windows réel.
+
+[Principe de placement de BatteryHub](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/blob/1dc6bc5d77c7272f60ee478877e068677cb3ab9d/README.md#how-it-works) · [Fenêtres superposées Win32](https://learn.microsoft.com/windows/win32/winmsg/window-features#layered-windows)

@@ -216,7 +216,7 @@ test('shows the HyperX USB battery even when another source is unavailable', asy
 test('can disable taskbar percentages without disabling battery monitoring', async ({ page }) => {
   await withAgent(page, status)
   await sidebar(page).getByRole('button', { name: 'Périphériques' }).click()
-  const icons = page.getByRole('switch', { name: 'Pourcentages dans la barre des tâches' })
+  const icons = page.getByRole('switch', { name: 'Bandeau batterie dans la barre des tâches' })
   await expect(icons).toHaveAttribute('aria-checked', 'true')
   await icons.click()
   await expect(icons).toHaveAttribute('aria-checked', 'false')
