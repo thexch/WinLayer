@@ -10,6 +10,34 @@ permissions:
   contents: read
 
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build local React assets
+        run: |
+          npm ci --prefix web
+          npm run build --prefix web
+      - name: Test the production UI
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          npm test
+      - name: Archive visual evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: WinLayer-UI-screenshots
+          path: artifacts/ui/*.png
+
   windows:
     runs-on: windows-latest
     timeout-minutes: 25
@@ -20,14 +48,25 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           global-json-file: global.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build local React assets
+        run: |
+          npm ci --prefix web
+          npm run build --prefix web
       - name: Restore
         run: dotnet restore WinLayer.slnx
       - name: Build
         run: dotnet build WinLayer.slnx -c Release --no-restore -warnaserror
       - name: Package a CI build
-        run: ./scripts/Package-Windows.ps1 -Version "0.1.0-ci.$env:GITHUB_RUN_NUMBER"
+        run: ./scripts/Package-Windows.ps1 -Version "2.0.0-ci.$env:GITHUB_RUN_NUMBER" -UseExistingWebAssets
       - name: Install and test WinLayer
-        run: ./scripts/Test-WindowsPackage.ps1 -Version "0.1.0-ci.$env:GITHUB_RUN_NUMBER"
+        run: ./scripts/Test-WindowsPackage.ps1 -Version "2.0.0-ci.$env:GITHUB_RUN_NUMBER"
+      - name: Verify the update from the published V1
+        run: ./scripts/Test-WindowsPackage.ps1 -Version "2.0.0-ci.$env:GITHUB_RUN_NUMBER" -UpgradeFromV1
       - name: Upload the test report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -35,7 +74,7 @@ jobs:
           name: windows-test-results
           path: |
             tests/WinLayer.Tests/TestResults/*.trx
-            artifacts/setup-smoke.log
+            artifacts/setup*-smoke.log
       - name: Archive the installer for manual validation
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

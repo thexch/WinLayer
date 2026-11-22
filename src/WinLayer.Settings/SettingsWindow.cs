@@ -1,0 +1,227 @@
+using System.Text.Json;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+using WinLayer.Core;
+
+namespace WinLayer.Settings;
+
+internal sealed class SettingsWindow : Form
+{
+    private const string Host = "winlayer.local";
+    private const string Entry = $"https://{Host}/index.html";
+    private readonly CancellationTokenSource _closing = new();
+    private readonly WebView2 _browser = new() { Dock = DockStyle.Fill, Visible = false };
+    private readonly Label _loading = new()
+    {
+        Text = "Ouverture des réglages WinLayer…",
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleCenter
+    };
+    private long? _navigationRevision;
+    private bool _receivedStatus;
+    private bool _receiving;
+    private bool _closed;
+
+    public SettingsWindow()
+    {
+        Text = "WinLayer — Ouverture";
+        AutoScaleMode = AutoScaleMode.Dpi;
+        StartPosition = FormStartPosition.CenterScreen;
+        MinimumSize = new Size(640, 500);
+        ClientSize = new Size(1100, 735);
+        Controls.Add(_browser);
+        Controls.Add(_loading);
+    }
+
+    protected override async void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        try
+        {
+            var assets = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+            if (!File.Exists(Path.Combine(assets, "index.html")))
+            {
+                ShowError("Les fichiers des réglages sont manquants. Réinstallez WinLayer.");
+                return;
+            }
+
+            var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "WinLayerData", "WebView2");
+            var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: data,
+                options: new CoreWebView2EnvironmentOptions { ExclusiveUserDataFolderAccess = true });
+            if (_closed)
+                return;
+
+            await _browser.EnsureCoreWebView2Async(environment);
+            if (_closed)
+                return;
+
+            var core = _browser.CoreWebView2;
+            core.Settings.AreHostObjectsAllowed = false;
+            core.Settings.AreDevToolsEnabled = false;
+            core.Settings.AreDefaultContextMenusEnabled = false;
+            core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+            core.Settings.IsStatusBarEnabled = false;
+            core.Settings.IsGeneralAutofillEnabled = false;
+            core.Settings.IsPasswordAutosaveEnabled = false;
+            core.Settings.IsSwipeNavigationEnabled = false;
+            core.NavigationStarting += (_, args) => args.Cancel = !IsEntry(args.Uri);
+            core.NavigationCompleted += (_, args) =>
+            {
+                if (!args.IsSuccess && args.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
+                    ShowError("Impossible de charger les réglages. Fermez cette fenêtre et réessayez.");
+            };
+            core.FrameNavigationStarting += (_, args) => args.Cancel = true;
+            core.NewWindowRequested += (_, args) => args.Handled = true;
+            core.PermissionRequested += (_, args) => args.State = CoreWebView2PermissionState.Deny;
+            core.DownloadStarting += (_, args) => args.Cancel = true;
+            core.ProcessFailed += (_, args) =>
+            {
+                if (args.ProcessFailedKind is CoreWebView2ProcessFailedKind.BrowserProcessExited or
+                    CoreWebView2ProcessFailedKind.RenderProcessExited or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+                    ShowError("Les réglages ont été interrompus. Fermez cette fenêtre et réessayez.");
+            };
+            core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
+            core.WebResourceRequested += (_, args) =>
+            {
+                if (!IsLocal(args.Request.Uri) || args.Request.Method != "GET")
+                    args.Response = environment.CreateWebResourceResponse(null, 403, "Forbidden", "");
+            };
+            core.WebMessageReceived += Receive;
+            core.SetVirtualHostNameToFolderMapping(Host, assets, CoreWebView2HostResourceAccessKind.Deny);
+            core.Navigate(Entry);
+        }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            ShowError("Microsoft Edge WebView2 Runtime est requis. Installez le runtime Evergreen, puis relancez les réglages.");
+        }
+        catch (Exception error)
+        {
+            System.Diagnostics.Trace.TraceError(error.ToString());
+            ShowError("Les réglages n’ont pas pu démarrer. Fermez cette fenêtre et réessayez.");
+        }
+    }
+
+    private static bool IsLocal(string address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.Scheme == "https" &&
+        uri.Host == Host && uri.IsDefaultPort && uri.UserInfo.Length == 0;
+
+    private static bool IsEntry(string address) => string.Equals(address, Entry, StringComparison.Ordinal);
+
+    private async void Receive(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        if (_closed || !IsEntry(args.Source))
+            return;
+
+        var valid = SettingsBridge.TryRead(args.WebMessageAsJson, out var id, out var request);
+        if (id == 0)
+            return;
+        if (!valid)
+        {
+            Reply(id, new(Error: "Requête de réglages invalide."));
+            return;
+        }
+        if (request is null)
+        {
+            // React sends this after its first exchange with the host, including agent-offline status.
+            if (_receivedStatus)
+            {
+                _loading.Visible = false;
+                _browser.Visible = true;
+                Text = "WinLayer";
+            }
+            Reply(id, new());
+            return;
+        }
+        if (_receiving)
+        {
+            Reply(id, new(Error: "Une action est déjà en cours."));
+            return;
+        }
+
+        _receiving = true;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+            timeout.CancelAfter(request.Command switch
+            {
+                Command.InstallUpdate => TimeSpan.FromMinutes(5.5),
+                Command.CheckUpdates => TimeSpan.FromMinutes(2),
+                _ => TimeSpan.FromSeconds(8)
+            });
+
+            Response response;
+            try
+            {
+                response = await LocalProtocol.SendAsync(request, timeout.Token);
+            }
+            catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException
+                or UnauthorizedAccessException or JsonException)
+            {
+                response = new(Error: "L’agent ne répond pas. WinLayer réessaie automatiquement.");
+            }
+
+            if (_closed)
+                return;
+
+            if (request.Command == Command.Status)
+                _receivedStatus = true;
+            if (response.Status is { } status)
+                ActivateForNavigation(status.NavigationRevision);
+
+            Reply(id, response);
+            if (request.Command == Command.InstallUpdate && response is { Error: null, Status.Updates.State: UpdateState.Installing })
+                Close();
+        }
+        finally
+        {
+            _receiving = false;
+        }
+    }
+
+    private void Reply(int id, Response response)
+    {
+        try
+        {
+            _browser.CoreWebView2?.PostWebMessageAsJson(SettingsBridge.Write(id, response));
+        }
+        catch (InvalidOperationException error)
+        {
+            System.Diagnostics.Trace.TraceError(error.ToString());
+        }
+    }
+
+    private void ActivateForNavigation(long revision)
+    {
+        if (_navigationRevision is { } previous && previous != revision)
+        {
+            if (WindowState == FormWindowState.Minimized)
+                WindowState = FormWindowState.Normal;
+            Activate();
+        }
+
+        _navigationRevision = revision;
+    }
+
+    private void ShowError(string message)
+    {
+        if (_closed)
+            return;
+
+        Text = "WinLayer — Réglages indisponibles";
+        _browser.Visible = false;
+        _loading.Text = message;
+        _loading.Visible = true;
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _closed = true;
+        _closing.Cancel();
+        _closing.Dispose();
+        if (_browser.CoreWebView2 is { } core)
+            core.WebMessageReceived -= Receive;
+        _browser.Dispose();
+        base.OnFormClosed(e);
+    }
+}

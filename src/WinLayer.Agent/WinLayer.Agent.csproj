@@ -10,8 +10,6 @@
     <ApplicationIcon>WinLayer.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Both package entry points share the full Windows Desktop runtime. -->
-    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <ProjectReference Include="../WinLayer.Modules/WinLayer.Modules.csproj" />
     <PackageReference Include="Velopack" Version="1.2.161" />
     <EmbeddedResource Include="WinLayer.ico" LogicalName="WinLayer.ico" />

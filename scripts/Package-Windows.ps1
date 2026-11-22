@@ -1,13 +1,19 @@
 param(
     [Parameter(Mandatory)]
     [ValidatePattern('^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-ci\.[1-9][0-9]*)?$')]
-    [string] $Version
+    [string] $Version,
+    [switch] $UseExistingWebAssets
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
+    if (!$UseExistingWebAssets) {
+        npm ci --prefix web
+        npm run build --prefix web
+    }
+
     dotnet tool restore
     $artifactRoot = Join-Path (Get-Location).Path artifacts
     $agent = Join-Path $artifactRoot agent

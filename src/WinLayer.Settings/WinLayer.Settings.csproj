@@ -4,13 +4,24 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>../WinLayer.Agent/WinLayer.ico</ApplicationIcon>
+    <WebAssets>$(MSBuildProjectDirectory)/../../web/dist</WebAssets>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Both package entry points share the full Windows Desktop runtime. -->
-    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <ProjectReference Include="../WinLayer.Core/WinLayer.Core.csproj" />
-    <Resource Include="../WinLayer.Agent/WinLayer.ico" Link="WinLayer.ico" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4370.26" />
+    <EmbeddedResource Include="../WinLayer.Agent/WinLayer.ico" LogicalName="WinLayer.ico" />
+    <Content Include="$(WebAssets)/**/*" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The WebView2 NuGet package adds both UI bindings. This host uses WinForms only. -->
+  <Target Name="RemoveWebViewWpfReference" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="VerifyWebAssets" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(WebAssets)/index.html')" Text="Compile the WinLayer frontend first with npm ci --prefix web and npm run build --prefix web." />
+  </Target>
 </Project>

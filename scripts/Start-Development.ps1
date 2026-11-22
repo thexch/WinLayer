@@ -4,6 +4,8 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
+    npm ci --prefix web
+    npm run build --prefix web
     dotnet build WinLayer.slnx
     $agent = Resolve-Path 'src/WinLayer.Agent/bin/Debug/net10.0-windows10.0.26100.0/WinLayer.exe'
     $settings = Resolve-Path 'src/WinLayer.Settings/bin/Debug/net10.0-windows10.0.26100.0/WinLayer.Settings.exe'
