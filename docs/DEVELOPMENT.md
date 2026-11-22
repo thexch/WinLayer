@@ -10,7 +10,7 @@ dotnet build WinLayer.slnx -c Release --no-restore -warnaserror
 dotnet test WinLayer.slnx -c Release --no-build
 ```
 
-`EnableWindowsTargeting` permet la compilation des projets Windows depuis Linux. L’exécution de WinForms, WPF, WinRT et du packaging Windows se fait sous Windows. La CI installe silencieusement le paquet puis teste le processus agent, l’instance unique, l’identification de la version et l’arrêt propre sur son runner. Les tests du module et du stockage s’exécutent sur les deux systèmes.
+`EnableWindowsTargeting` permet la compilation des projets Windows depuis Linux. L’exécution de WinForms, WPF, WinRT et du packaging Windows se fait sous Windows. La CI installe silencieusement le paquet puis teste le processus agent, l’instance unique, l’identification de la version, le maintien de l’agent après fermeture de WPF et l’arrêt propre sur son runner. Les tests du module et du stockage s’exécutent sur les deux systèmes.
 
 Pour lancer les réglages dans un environnement Windows de développement, installer le SDK .NET 10 et ouvrir PowerShell 7.
 

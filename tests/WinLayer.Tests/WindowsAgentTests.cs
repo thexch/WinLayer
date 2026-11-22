@@ -8,7 +8,7 @@ namespace WinLayer.Tests;
 public sealed class WindowsAgentTests
 {
     [TestMethod]
-    public async Task InstalledAgentRunsInBackgroundRejectsDuplicatesAndQuitsCleanly()
+    public async Task InstalledAgentSurvivesSettingsClosureRejectsDuplicatesAndQuitsCleanly()
     {
         var executable = Environment.GetEnvironmentVariable("WINLAYER_SMOKE_EXE");
         var version = Environment.GetEnvironmentVariable("WINLAYER_SMOKE_VERSION");
@@ -30,6 +30,17 @@ public sealed class WindowsAgentTests
             Assert.AreEqual(0, duplicate.ExitCode);
             Assert.IsFalse(agent.HasExited);
 
+            var opened = await LocalProtocol.SendAsync(new(Command.OpenSettings, Page.Battery), timeout.Token);
+            Assert.IsNull(opened.Error);
+            Assert.AreEqual(Page.Battery, opened.Status?.RequestedPage);
+            using var settings = await AwaitSettingsWindowAsync(timeout.Token);
+            Assert.IsTrue(settings.CloseMainWindow());
+            await settings.WaitForExitAsync(timeout.Token);
+            Assert.AreEqual(0, settings.ExitCode);
+            var afterClosing = await LocalProtocol.SendAsync(new(Command.Status), timeout.Token);
+            Assert.AreEqual(version, afterClosing.Status?.Version);
+            Assert.IsFalse(agent.HasExited);
+
             var quit = await LocalProtocol.SendAsync(new(Command.Quit), timeout.Token);
             Assert.IsNull(quit.Error);
             await agent.WaitForExitAsync(timeout.Token);
@@ -38,7 +49,34 @@ public sealed class WindowsAgentTests
         finally
         {
             if (!agent.HasExited)
-                agent.Kill();
+            {
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await LocalProtocol.SendAsync(new(Command.Quit), cleanup.Token);
+                    await agent.WaitForExitAsync(cleanup.Token);
+                }
+                catch (Exception) when (!agent.HasExited)
+                {
+                    agent.Kill(entireProcessTree: true);
+                }
+            }
+        }
+    }
+
+    private static async Task<Process> AwaitSettingsWindowAsync(CancellationToken stop)
+    {
+        while (true)
+        {
+            stop.ThrowIfCancellationRequested();
+            foreach (var candidate in Process.GetProcessesByName("WinLayer.Settings"))
+            {
+                if (candidate.MainWindowHandle != IntPtr.Zero)
+                    return candidate;
+                candidate.Dispose();
+            }
+
+            await Task.Delay(100, stop);
         }
     }
 
