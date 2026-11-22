@@ -11,3 +11,5 @@
 - Exécuter `dotnet build WinLayer.slnx -c Release -warnaserror` et `dotnet test WinLayer.slnx -c Release --no-build`. La CI Windows valide aussi l’installation, la migration depuis V1 et le cycle de vie de WebView2 et produit un installateur de test.
 - Garder les données utilisateur hors de l’installation. Ne jamais intégrer de jeton ou autre secret aux binaires de distribution.
 - Réserver les tags stables aux commits validés. Suivre `docs/RELEASING.md` pour les essais de l’installation et des mises à jour.
+
+- Pour chaque mise à jour de l’application livrée à Théo, publier directement une version stable après la réussite de la CI sur `main`. Vérifier que le workflow de release a réussi et que le flux Velopack public propose la version, pour permettre l’installation depuis **Mises à jour** dans WinLayer.
