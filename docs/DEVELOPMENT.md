@@ -10,7 +10,7 @@ dotnet build WinLayer.slnx -c Release --no-restore -warnaserror
 dotnet test WinLayer.slnx -c Release --no-build
 ```
 
-`EnableWindowsTargeting` permet la compilation des projets Windows depuis Linux. L’exécution de WinForms, WPF, WinRT et du packaging Windows se fait sous Windows. La CI teste le processus agent autonome sur son runner. Les tests du module et du stockage s’exécutent sur les deux systèmes.
+`EnableWindowsTargeting` permet la compilation des projets Windows depuis Linux. L’exécution de WinForms, WPF, WinRT et du packaging Windows se fait sous Windows. La CI installe silencieusement le paquet puis teste le processus agent, l’instance unique, l’identification de la version et l’arrêt propre sur son runner. Les tests du module et du stockage s’exécutent sur les deux systèmes.
 
 Pour lancer les réglages dans un environnement Windows de développement, installer le SDK .NET 10 et ouvrir PowerShell 7.
 
@@ -18,7 +18,7 @@ Pour lancer les réglages dans un environnement Windows de développement, insta
 ./scripts/Start-Development.ps1
 ```
 
-Quitter d’abord toute autre instance de WinLayer. Un exécutable de développement utilise les mêmes données de profil que le paquet. Utiliser un autre compte ou une VM pour isoler les essais. Le test de l’agent publié ne s’active que si `WINLAYER_SMOKE_EXE` désigne le binaire autonome dans une session Windows isolée.
+Quitter d’abord toute autre instance de WinLayer. Un exécutable de développement utilise les mêmes données de profil que le paquet. Utiliser un autre compte ou une VM pour isoler les essais. Le test de l’agent installé s’active dans une session Windows isolée lorsque `WINLAYER_SMOKE_EXE` et `WINLAYER_SMOKE_VERSION` désignent le binaire et la version installés.
 
 ## Validation manuelle sur Windows 11 x64
 

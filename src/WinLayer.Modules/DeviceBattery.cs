@@ -3,7 +3,7 @@ using WinLayer.Core;
 
 namespace WinLayer.Modules;
 
-public sealed record ModuleDescriptor(string Id, string DisplayName, IReadOnlyList<string> Capabilities);
+public sealed record ModuleDescriptor(string Id, string DisplayName, IReadOnlyList<string> Capabilities, bool RequiresElevation);
 
 public interface IWinLayerModule<in TOptions> : IAsyncDisposable
 {
@@ -32,7 +32,8 @@ public sealed class DeviceBatteryModule(
     private readonly LowBatteryAlerts _alerts = new();
 
     public ModuleDescriptor Descriptor { get; } = new("device-battery", "Device Battery",
-        ["Lecture des périphériques Bluetooth LE associés", "Notifications locales de batterie faible"]);
+        ["Lecture des périphériques Bluetooth LE associés", "Notifications locales de batterie faible"],
+        RequiresElevation: false);
 
     public async Task ApplyAsync(BatteryOptions options)
     {

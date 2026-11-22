@@ -8,11 +8,12 @@ namespace WinLayer.Tests;
 public sealed class WindowsAgentTests
 {
     [TestMethod]
-    public async Task PublishedAgentRunsInBackgroundRejectsDuplicatesAndQuitsCleanly()
+    public async Task InstalledAgentRunsInBackgroundRejectsDuplicatesAndQuitsCleanly()
     {
         var executable = Environment.GetEnvironmentVariable("WINLAYER_SMOKE_EXE");
-        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(executable))
-            Assert.Inconclusive("Requires the published agent and an isolated Windows session.");
+        var version = Environment.GetEnvironmentVariable("WINLAYER_SMOKE_VERSION");
+        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(executable) || string.IsNullOrWhiteSpace(version))
+            Assert.Inconclusive("Requires the installed version and an isolated Windows session.");
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         using var agent = Process.Start(executable!, "--background")!;
@@ -20,7 +21,8 @@ public sealed class WindowsAgentTests
         {
             var firstStatus = await AwaitAgentAsync(agent, timeout.Token);
             Assert.IsNotNull(firstStatus);
-            Assert.AreEqual(UpdateState.Unavailable, firstStatus.Updates.State);
+            Assert.AreEqual(UpdateState.NotChecked, firstStatus.Updates.State);
+            Assert.AreEqual(version, firstStatus.Version);
             Assert.IsFalse(agent.HasExited);
 
             using var duplicate = Process.Start(executable!, "--background")!;

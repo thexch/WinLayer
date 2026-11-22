@@ -26,17 +26,16 @@ jobs:
         run: dotnet build WinLayer.slnx -c Release --no-restore -warnaserror
       - name: Package a CI build
         run: ./scripts/Package-Windows.ps1 -Version "0.1.0-ci.$env:GITHUB_RUN_NUMBER"
-      - name: Test, including the published agent
-        shell: pwsh
-        run: |
-          $env:WINLAYER_SMOKE_EXE = Join-Path $PWD 'artifacts/agent/WinLayer.exe'
-          dotnet test WinLayer.slnx -c Release --no-build --logger "trx"
+      - name: Install and test WinLayer
+        run: ./scripts/Test-WindowsPackage.ps1 -Version "0.1.0-ci.$env:GITHUB_RUN_NUMBER"
       - name: Upload the test report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: windows-test-results
-          path: tests/WinLayer.Tests/TestResults/*.trx
+          path: |
+            tests/WinLayer.Tests/TestResults/*.trx
+            artifacts/setup-smoke.log
       - name: Archive the installer for manual validation
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

@@ -1,6 +1,6 @@
 # Modules
 
-Un module compilé possède un `ModuleDescriptor` avec son identifiant, son nom et ses capacités. Utiliser des options immuables stockées dans `Preferences` et mettre en œuvre `IWinLayerModule<TOptions>`. L’agent sérialise les appels de configuration et d’arrêt. Une configuration désactivée doit annuler et attendre les tâches, supprimer les abonnements et fermer les handles. Seul le processus agent effectue le travail résident.
+Un module compilé possède un `ModuleDescriptor` avec son identifiant, son nom, ses capacités et une déclaration du besoin d’élévation. Device Battery fonctionne sous le compte courant, avec les droits Bluetooth accordés par Windows. Utiliser des options immuables stockées dans `Preferences` et mettre en œuvre `IWinLayerModule<TOptions>`. L’agent sérialise les appels de configuration et d’arrêt. Une configuration désactivée doit annuler et attendre les tâches, supprimer les abonnements et fermer les handles. Seul le processus agent effectue le travail résident.
 
 Pour ajouter un module, créer le comportement testable dans `WinLayer.Modules`, placer l’adaptateur Windows dans l’agent si nécessaire, puis relier les options et l’instantané à WPF. Documenter les sources, les capacités et les permissions. Ajouter des tests de transition et de défaillance en utilisant un fournisseur de test.
 

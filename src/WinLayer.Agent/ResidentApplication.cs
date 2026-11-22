@@ -313,10 +313,16 @@ internal sealed class ResidentApplication : ApplicationContext
                 await _settings.WaitForExitAsync(timeout.Token);
             }
 
+            if (_quitting)
+                return;
+
             _updates.WaitExitThenApplyUpdates(target, restart: true);
             await StopAsync();
         }
-        catch (Exception error) when (!_quitting)
+        catch (OperationCanceledException) when (_quitting)
+        {
+        }
+        catch (Exception error)
         {
             _updateStatus = new(UpdateState.Available, target.Version.ToString(), "L’installation a été interrompue.");
             WindowsSettings.Log("Installation de la mise à jour.", error);
@@ -383,9 +389,9 @@ internal sealed class ResidentApplication : ApplicationContext
         _tray.Visible = false;
         try
         {
+            await _stop.CancelAsync();
             if (_settings is { HasExited: false })
                 _settings.CloseMainWindow();
-            await _stop.CancelAsync();
             await Task.WhenAll(_server, _autoCheck);
         }
         catch (Exception error)
