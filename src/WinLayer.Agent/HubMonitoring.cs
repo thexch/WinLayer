@@ -16,7 +16,9 @@ internal sealed class HubMonitoring : IDisposable
     private readonly Dictionary<TrayMetric, NotifyIcon> _icons = [];
     private readonly HashSet<TrayMetric> _alerted = [];
     private long _viewExpires;
-    private Page _view;
+    private bool _processView;
+    private bool _readingProcesses;
+    private int _processRevision;
     private HubOptions _network = HubOptions.Default(HubTool.Network);
     private HubOptions _system = HubOptions.Default(HubTool.System);
     private bool _collecting;
@@ -34,9 +36,9 @@ internal sealed class HubMonitoring : IDisposable
 
     public void Configure(HubOptions network, HubOptions system)
     {
-        if (_network == network && _system == system)
+        if (_timer.Enabled && _network == network && _system == system)
             return;
-        var reset = _network.Enabled != network.Enabled || _network.Adapter != network.Adapter || _system.Enabled != system.Enabled;
+        var reset = _network.Adapter != network.Adapter;
         _network = network;
         _system = system;
         _generation++;
@@ -54,33 +56,22 @@ internal sealed class HubMonitoring : IDisposable
         UpdateSampling();
     }
 
-    public void SetView(Page page)
+    public void SetProcessView(bool active)
     {
         if (_disposed)
             return;
-        var changed = page != _view;
-        if (changed && _view == Page.System)
-            ClearProcessHistory();
-        _view = page;
+        var wasActive = ProcessViewVisible;
+        _processView = active;
         _viewExpires = Environment.TickCount64 + 7000;
-        if (changed || !_timer.Enabled && WantsSamples)
-            UpdateSampling();
+        if (active && !wasActive)
+            _ = RefreshProcessesAsync(automatic: true);
     }
 
-    private bool Visible(Page page) => _view == page && Environment.TickCount64 < _viewExpires;
-    private bool WantsSamples => _network.Enabled || _system.Enabled && (_system.TrayMetrics.Length > 0 || Visible(Page.System));
+    private bool ProcessViewVisible => _processView && Environment.TickCount64 < _viewExpires;
 
     private void UpdateSampling()
     {
-        _timer.Stop();
-        if (!WantsSamples)
-        {
-            _previous = null;
-            DisposeCountersWhenIdle();
-            return;
-        }
-        _timer.Interval = 1000 * (_network.Enabled && _system.Enabled ? Math.Min(_network.Seconds, _system.Seconds) :
-            _network.Enabled ? _network.Seconds : _system.Seconds);
+        _timer.Interval = 1000 * Math.Min(_network.Seconds, _system.Seconds);
         _timer.Start();
         _ = SampleAsync();
     }
@@ -88,45 +79,27 @@ internal sealed class HubMonitoring : IDisposable
     private void ClearProcessHistory()
     {
         _processTime = 0;
+        _processRevision++;
         _previousCpu.Clear();
         if (Status is { } current)
             Status = current with { Processes = [] };
-    }
-
-    private void DisposeCountersWhenIdle()
-    {
-        if (_pending is null && _pdh is not null)
-        {
-            _pdh.Dispose();
-            _pdh = null;
-        }
     }
 
     private async Task SampleAsync()
     {
         if (_collecting || _disposed)
             return;
-        if (!WantsSamples)
-        {
-            _timer.Stop();
-            _previous = null;
-            ClearProcessHistory();
-            DisposeCountersWhenIdle();
-            return;
-        }
         var generation = _generation;
         var network = _network;
         var system = _system;
-        var detailed = system.Enabled && Visible(Page.System);
-        if (!detailed && _processTime != 0)
+        var topology = _previous is null || _tick++ % 10 == 0;
+        if (!ProcessViewVisible && _processTime != 0)
             ClearProcessHistory();
-        var systemActive = system.Enabled && (detailed || system.TrayMetrics.Length > 0);
-        var topology = _previous is null || detailed && _previous.Cores is null || _tick++ % 10 == 0;
         _collecting = true;
         try
         {
             var previous = _previous;
-            _pending = Task.Run(() => Collect(systemActive, detailed, system.TrayMetrics.Contains(TrayMetric.Gpu), network.Adapter, topology, previous));
+            _pending = Task.Run(() => Collect(network.Adapter, topology, previous));
             var current = await _pending;
             if (_disposed || generation != _generation)
                 return;
@@ -136,14 +109,14 @@ internal sealed class HubMonitoring : IDisposable
                 if (previous.Adapter == current.Adapter && current.Adapter is not null)
                     (down, up) = HubCalculations.NetworkRate(current.Rx, current.Tx, previous.Rx, previous.Tx,
                         Stopwatch.GetElapsedTime(previous.Timestamp, current.Timestamp).TotalSeconds);
-                if (systemActive && previous.Total != 0)
+                if (previous.Total != 0)
                     cpu = HubCalculations.Utilization(current.Idle, current.Total, previous.Idle, previous.Total);
             }
             var ram = current.TotalRam > 0 ? 100d * (current.TotalRam - current.FreeRam) / current.TotalRam : (double?)null;
             _previous = current;
             var sample = new HubSample(DateTimeOffset.UtcNow, cpu, ram, down, up, current.Gpu);
             _history.Enqueue(sample);
-            var history = Math.Max(network.Enabled ? network.History : 0, system.Enabled ? system.History : 0);
+            var history = Math.Max(network.History, system.History);
             while (_history.Count > history)
                 _history.Dequeue();
             Status = new(current.Adapters, current.Adapter, current.Rx, current.Tx, _history.ToArray(),
@@ -151,6 +124,8 @@ internal sealed class HubMonitoring : IDisposable
                 current.Disks, Status?.Processes ?? [], current.GpuName, current.GpuMemory, current.GpuUsed,
                 current.Cores, current.CpuMHz, current.Logical, current.DiskRead, current.DiskWrite);
             UpdateIcons(sample, network, system);
+            if (ProcessViewVisible && (_processTime == 0 || Stopwatch.GetElapsedTime(_processTime).TotalSeconds >= 2))
+                _ = RefreshProcessesAsync(automatic: true);
         }
         catch (Exception error)
         {
@@ -160,7 +135,7 @@ internal sealed class HubMonitoring : IDisposable
         {
             _collecting = false;
             _pending = null;
-            if ((!_system.Enabled || _disposed || !Visible(Page.System) && !_system.TrayMetrics.Contains(TrayMetric.Gpu)) && _pdh is not null)
+            if (_disposed && _pdh is not null)
             {
                 _pdh.Dispose();
                 _pdh = null;
@@ -168,7 +143,7 @@ internal sealed class HubMonitoring : IDisposable
         }
     }
 
-    private Reading Collect(bool system, bool detailed, bool trayGpu, string selected, bool topology, Reading? previous)
+    private Reading Collect(string selected, bool topology, Reading? previous)
     {
         var interfaces = NetworkInterface.GetAllNetworkInterfaces()
             .Where(adapter => adapter.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel))
@@ -191,28 +166,18 @@ internal sealed class HubMonitoring : IDisposable
 
         var adapters = interfaces.Select(adapter => new NetworkAdapter(adapter.Id, adapter.Name, adapter.NetworkInterfaceType.ToString())).ToArray();
         var reading = new Reading(Stopwatch.GetTimestamp(), adapters, activeId, rx, tx);
-        if (!system)
-            return reading;
         var mem = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         var gotMemory = GlobalMemoryStatusEx(ref mem);
         GetSystemTimes(out var idle, out var kernel, out var user);
-        var identity = topology && detailed ? HardwareIdentity() :
+        var identity = topology ? HardwareIdentity() :
             (previous?.Processor, previous?.CpuMHz, previous?.Cores, previous?.GpuName, previous?.GpuMemory);
-        double?[]? logical = null;
-        double? diskRead = null, diskWrite = null, gpu = null;
-        long? gpuUsed = null;
-        if ((detailed || trayGpu) && (_pdh is null || _pdh.Detailed != detailed))
-        {
-            _pdh?.Dispose();
-            _pdh = new(detailed);
-        }
-        if (detailed || trayGpu)
-            _pdh?.Read(out logical, out diskRead, out diskWrite, out gpu, out gpuUsed);
+        _pdh ??= new(detailed: true);
+        _pdh.Read(out var logical, out var diskRead, out var diskWrite, out var gpu, out var gpuUsed);
         return reading with
         {
             Idle = idle, Total = kernel + user, Processor = identity.Item1, CpuMHz = identity.Item2, Cores = identity.Item3,
             TotalRam = gotMemory ? (long)mem.TotalPhysical : null, FreeRam = gotMemory ? (long)mem.AvailablePhysical : null,
-            Disks = detailed && topology ? Drives() : previous?.Disks ?? [], Gpu = gpu, GpuUsed = gpuUsed,
+            Disks = topology ? Drives() : previous?.Disks ?? [], Gpu = gpu, GpuUsed = gpuUsed,
             GpuName = identity.Item4, GpuMemory = identity.Item5, Logical = logical, DiskRead = diskRead, DiskWrite = diskWrite
         };
     }
@@ -306,25 +271,39 @@ internal sealed class HubMonitoring : IDisposable
         }
     }
 
-    public async Task RefreshProcessesAsync()
+    public async Task RefreshProcessesAsync(bool automatic = false)
     {
-        if (Status is null || !_system.Enabled || _disposed)
+        if (Status is null || _disposed || _readingProcesses)
             return;
+        _readingProcesses = true;
+        var revision = _processRevision;
         var now = Stopwatch.GetTimestamp();
         var elapsed = _processTime == 0 ? 0 : Stopwatch.GetElapsedTime(_processTime, now).TotalMilliseconds;
         var previousTotals = new Dictionary<(int Pid, long Started), TimeSpan>(_previousCpu);
-        var (processes, totals) = await Task.Run(() => ReadProcesses(elapsed, previousTotals));
-        if (Status is not { } current || !_system.Enabled || _disposed)
-            return;
-        _processTime = now;
-        _previousCpu.Clear();
-        foreach (var (key, value) in totals)
-            _previousCpu.Add(key, value);
-        Status = current with { Processes = processes };
+        var cached = Status.Processes.Where(process => process.Started > 0)
+            .ToDictionary(process => (process.Pid, process.Started));
+        try
+        {
+            var (processes, totals) = await Task.Run(() => ReadProcesses(elapsed, previousTotals, cached));
+            if (Status is not { } current || _disposed || revision != _processRevision ||
+                automatic && !ProcessViewVisible)
+                return;
+            _processTime = now;
+            _previousCpu.Clear();
+            foreach (var (key, value) in totals)
+                _previousCpu.Add(key, value);
+            Status = current with { Processes = processes };
+        }
+        catch (Exception error) when (automatic)
+        {
+            WindowsSettings.Log("Collecte des processus.", error);
+        }
+        finally { _readingProcesses = false; }
     }
 
     private static (HubProcess[], Dictionary<(int Pid, long Started), TimeSpan>) ReadProcesses(double elapsed,
-        Dictionary<(int Pid, long Started), TimeSpan> previousTotals)
+        Dictionary<(int Pid, long Started), TimeSpan> previousTotals,
+        Dictionary<(int Pid, long Started), HubProcess> cached)
     {
         var processes = new List<HubProcess>();
         var totals = new Dictionary<(int Pid, long Started), TimeSpan>();
@@ -339,9 +318,13 @@ internal sealed class HubMonitoring : IDisposable
                     var started = TryGet(() => new DateTimeOffset(process.StartTime).ToUnixTimeMilliseconds()) ?? 0;
                     var time = TryGet(() => process.TotalProcessorTime);
                     var ram = TryGet(() => process.WorkingSet64);
-                    string? path;
-                    try { path = process.MainModule?.FileName; }
-                    catch (Exception error) when (error is Win32Exception or InvalidOperationException or NotSupportedException) { path = null; }
+                    string? path = null;
+                    cached.TryGetValue((id, started), out var last);
+                    if (last is not null)
+                        path = last.Path;
+                    else
+                        try { path = process.MainModule?.FileName; }
+                        catch (Exception error) when (error is Win32Exception or InvalidOperationException or NotSupportedException) { }
                     double? cpu = null;
                     if (time is { } total && started > 0)
                     {
@@ -350,7 +333,7 @@ internal sealed class HubMonitoring : IDisposable
                             cpu = Math.Clamp(100 * (total - previous).TotalMilliseconds / elapsed / Environment.ProcessorCount, 0, 100);
                         totals[key] = total;
                     }
-                    processes.Add(new(id, name, started, ram, cpu, path is { Length: <= 1024 } ? path : null));
+                    processes.Add(new(id, name, started, ram, cpu, path is { Length: <= 1024 } ? path : null, last?.Icon));
                 }
                 catch (Exception error) when (error is Win32Exception or InvalidOperationException or NotSupportedException) { }
             }
@@ -360,7 +343,7 @@ internal sealed class HubMonitoring : IDisposable
         for (var index = 0; index < ordered.Length; index++)
         {
             var process = ordered[index];
-            if (process.Path is not { } path)
+            if (index >= 64 || process.Icon is not null || process.Path is not { } path)
                 continue;
             if (!icons.TryGetValue(path, out var icon) && icons.Count < 32)
                 icons[path] = icon = ProcessIcon(path);
@@ -412,7 +395,7 @@ internal sealed class HubMonitoring : IDisposable
     private void UpdateIcons(HubSample sample, HubOptions network, HubOptions system)
     {
         var wanted = new Dictionary<TrayMetric, (string Text, Color Color)>();
-        if (network.Enabled && network.Indicator && sample.Down is { } down && sample.Up is { } up)
+        if (network.Indicator && sample.Down is { } down && sample.Up is { } up)
             wanted[TrayMetric.Network] = ($"WinLayer · ↓ {Rate(down, network.RateUnit)}  ↑ {Rate(up, network.RateUnit)}", ColorTranslator.FromHtml(network.Color));
         if (system.Enabled)
         {

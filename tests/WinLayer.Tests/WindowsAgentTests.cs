@@ -31,8 +31,26 @@ public sealed class WindowsAgentTests
             Assert.AreEqual(UpdateState.NotChecked, firstStatus.Updates.State);
             Assert.AreEqual(version, firstStatus.Version);
             if (migratedPreferences is not null)
-                Assert.AreEqual(migratedPreferences, firstStatus.Preferences);
+                Assert.AreEqual(migratedPreferences with
+                {
+                    Battery = migratedPreferences.Battery with { Enabled = true },
+                    AutoClicker = migratedPreferences.AutoClicker with { Enabled = true }
+                }, firstStatus.Preferences);
+            Assert.IsTrue(firstStatus.Preferences.Battery.Enabled);
+            Assert.IsTrue(firstStatus.Preferences.AutoClicker.Enabled);
+            Assert.IsFalse(CanRegister(HubOptions.Default(HubTool.Picker).Shortcut));
             Assert.IsFalse(agent.HasExited);
+            using (var monitoring = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token))
+            {
+                monitoring.CancelAfter(TimeSpan.FromSeconds(18));
+                var status = firstStatus;
+                while (status.Hub?.Metrics?.History.Any(sample => sample.Cpu is not null) != true)
+                {
+                    await Task.Delay(200, monitoring.Token);
+                    status = (await LocalProtocol.SendAsync(new(Command.Status), monitoring.Token)).Status!;
+                }
+                Assert.IsTrue(status.Hub.Metrics.TotalRam > 0);
+            }
 
             var preferences = firstStatus.Preferences;
             var enabled = await LocalProtocol.SendAsync(new(Command.Save, Preferences: preferences with
@@ -59,6 +77,7 @@ public sealed class WindowsAgentTests
             Assert.IsNull(opened.Error);
             Assert.AreEqual(Page.Battery, opened.Status?.RequestedPage);
             using var settings = await AwaitSettingsWindowAsync(timeout.Token);
+            Assert.IsTrue(IsZoomed(settings.MainWindowHandle));
             Assert.IsTrue(settings.CloseMainWindow());
             await settings.WaitForExitAsync(timeout.Token);
             Assert.AreEqual(0, settings.ExitCode);
@@ -143,7 +162,8 @@ public sealed class WindowsAgentTests
             var visible = FindWindowW(null, "WinLayer — Sélecteur de fenêtres") != IntPtr.Zero;
             var afterOpening = await LocalProtocol.SendAsync(new(Command.Status), stop);
             Assert.IsTrue(visible, afterOpening.Status?.Hub?.Errors.GetValueOrDefault(HubTool.Switcher) ?? "Switcher window not found.");
-            Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Stop))).Error);
+            Assert.IsNull((await Send(new(HubTool.Switcher, HubAction.Open))).Error);
+            Assert.AreEqual(IntPtr.Zero, FindWindowW(null, "WinLayer — Sélecteur de fenêtres"));
             foreach (var tool in new[] { HubTool.Picker, HubTool.Ruler })
             {
                 var screen = await Send(new(tool, HubAction.Open));
@@ -169,9 +189,24 @@ public sealed class WindowsAgentTests
             Assert.IsTrue(metrics.TotalRam > 0);
             Assert.IsTrue(metrics.FreeRam > 0);
             Assert.IsTrue(metrics.Threads > 0);
-            var processes = await Send(new(HubTool.System, HubAction.Processes));
-            Assert.IsNull(processes.Error);
-            Assert.IsTrue(processes.Status?.Hub?.Metrics?.Processes.Any(process => process.Pid == Environment.ProcessId));
+            using var processSamples = CancellationTokenSource.CreateLinkedTokenSource(stop);
+            processSamples.CancelAfter(TimeSpan.FromSeconds(15));
+            HubProcess? process;
+            do
+            {
+                var view = await LocalProtocol.SendAsync(new(Command.Status, Page.SystemProcesses), processSamples.Token);
+                process = view.Status?.Hub?.Metrics?.Processes.FirstOrDefault(item => item.Pid == Environment.ProcessId);
+                if (process?.Cpu is null)
+                    await Task.Delay(400, processSamples.Token);
+            } while (process?.Cpu is null);
+
+            foreach (var effect in new[] { TaskbarEffect.Frame, TaskbarEffect.Tint, TaskbarEffect.Windows })
+            {
+                var style = options[HubTool.Taskbar] with { TaskbarEffect = effect };
+                var savedStyle = await Send(new(HubTool.Taskbar, HubAction.Configure, style));
+                Assert.IsNull(savedStyle.Error);
+                Assert.AreEqual(effect, savedStyle.Status?.Preferences.Hub?.Get(HubTool.Taskbar).TaskbarEffect);
+            }
             completed = true;
         }
         finally
@@ -183,7 +218,7 @@ public sealed class WindowsAgentTests
                     await Send(new(tool, HubAction.Configure, value with { Enabled = false }));
             }
         }
-        Assert.IsTrue(CanRegister(picker.Shortcut));
+        Assert.IsFalse(CanRegister(picker.Shortcut));
     }
 
     private static async Task VerifyAutoClickerWhileSettingsClosedAsync(CancellationToken stop)
@@ -236,6 +271,7 @@ public sealed class WindowsAgentTests
 
         var disabled = await LocalProtocol.SendAsync(new(Command.SaveAutoClicker, ClickerOptions: new()), stop);
         Assert.IsNull(disabled.Error);
+        Assert.IsTrue(disabled.Status?.Preferences.AutoClicker.Enabled);
         Assert.IsTrue(CanRegister(options.Shortcut));
         Assert.IsTrue(CanRegister(options.Emergency));
     }
@@ -249,6 +285,9 @@ public sealed class WindowsAgentTests
         Assert.IsTrue(UnregisterHotKey(IntPtr.Zero, id));
         return true;
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool IsZoomed(IntPtr window);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern IntPtr FindWindowW(string? className, string title);

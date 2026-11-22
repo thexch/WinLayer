@@ -3,7 +3,8 @@ import type { AutoClickerOptions, AutoClickerStatus, ClickShortcut } from './bri
 export const hubTools = ['taskbar', 'switcher', 'macro', 'repeater', 'picker', 'ruler', 'network', 'system', 'pin'] as const
 export type HubTool = typeof hubTools[number]
 export type ColorFormat = 'hex' | 'rgb' | 'hsl'
-export interface TaskbarStyle { name: string; color: string; opacity: number; size: number; radius: number; inset: number }
+export type TaskbarEffect = 'windows' | 'accent' | 'frame' | 'tint'
+export interface TaskbarStyle { name: string; color: string; opacity: number; size: number; radius: number; inset: number; effect?: TaskbarEffect }
 export interface ColorPalette { name: string; colors: string[] }
 export interface HubOptions {
   enabled: boolean
@@ -14,6 +15,7 @@ export interface HubOptions {
   exclusions: string
   indicator: boolean
   color: string
+  taskbarEffect?: TaskbarEffect | null
   opacity: number
   size: number
   zoom: number
@@ -42,7 +44,7 @@ export interface HubOptions {
 }
 
 export const defaultHubOptions = (tool: HubTool): HubOptions => ({
-  enabled: false, shortcut: { key: 112 + hubTools.indexOf(tool), modifiers: 6 }, seconds: 2, history: 60,
+  enabled: true, taskbarEffect: tool === 'taskbar' ? 'windows' : null, shortcut: { key: 112 + hubTools.indexOf(tool), modifiers: 6 }, seconds: 2, history: 60,
   adapter: '', exclusions: '', indicator: tool !== 'network', color: '#7669DD', opacity: 75, size: 4, zoom: 12, radius: 0, inset: 0,
   threshold: 90, alerts: false, width: 700, layout: 'grid', rulerMode: 'free', colorFormat: 'hex',
   rateUnit: 'kilobytes', trayMetrics: [], autoCopy: true, outputKey: 32, outputModifiers: 0, playCount: 1,

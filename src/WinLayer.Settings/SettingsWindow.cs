@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using WinLayer.Core;
@@ -23,12 +25,14 @@ internal sealed class SettingsWindow : Form
     private bool _receiving;
     private bool _closed;
     private Appearance _captionAppearance;
+    private FormWindowState _lastVisibleState = FormWindowState.Maximized;
 
     public SettingsWindow()
     {
         Text = "WinLayer — Ouverture";
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
+        WindowState = FormWindowState.Maximized;
         MinimumSize = new Size(640, 500);
         ClientSize = new Size(1100, 735);
         Controls.Add(_browser);
@@ -172,7 +176,7 @@ internal sealed class SettingsWindow : Form
             {
                 response = await LocalProtocol.SendAsync(request, timeout.Token, request.ReportProgress
                     ? value => { if (!_closed) Reply(id, new(Progress: value)); }
-                    : null);
+                    : null, RequestsOverlay(request) ? GrantAgentFocus : null);
             }
             catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException
                 or UnauthorizedAccessException or JsonException)
@@ -204,6 +208,23 @@ internal sealed class SettingsWindow : Form
             _receiving = false;
         }
     }
+
+    private static bool RequestsOverlay(Request request) =>
+        request.Hub is { Action: HubAction.Play } or
+            { Action: HubAction.Open, Tool: HubTool.Switcher or HubTool.Picker or HubTool.Ruler or HubTool.Macro };
+
+    private static void GrantAgentFocus(SafePipeHandle pipe)
+    {
+        // A button in the foreground WebView can explicitly pass foreground permission to its local agent.
+        if (GetNamedPipeServerProcessId(pipe, out var processId) && processId > 0)
+            AllowSetForegroundWindow(processId);
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(uint processId);
 
     private bool Reply(int id, Response response)
     {
@@ -240,7 +261,7 @@ internal sealed class SettingsWindow : Form
         if (_navigationRevision is { } previous && previous != revision)
         {
             if (WindowState == FormWindowState.Minimized)
-                WindowState = FormWindowState.Normal;
+                WindowState = _lastVisibleState;
             Activate();
         }
 
@@ -256,6 +277,13 @@ internal sealed class SettingsWindow : Form
         _browser.Visible = false;
         _loading.Text = message;
         _loading.Visible = true;
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (WindowState != FormWindowState.Minimized)
+            _lastVisibleState = WindowState;
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)

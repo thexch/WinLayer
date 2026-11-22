@@ -21,13 +21,13 @@ Certaines applications filtrent les entrées simulées. Consultez les limites de
 
 ### Windows Hub
 
-- **Taskbar Studio** applique un liseré à couleur et opacité réglables. Enregistrez des styles et restaurez la barre en désactivant la surcouche.
+- **Taskbar Studio** applique un liseré, un cadre ou une teinte à couleur et opacité réglables. Enregistrez des styles et restaurez la barre en sélectionnant **Style Windows**.
 - **Alt-Tab Customizer** ouvre un sélecteur indépendant avec aperçu, recherche et exclusions. **Always on Top** épingle la fenêtre active et peut signaler l’épinglage par un contour.
 - **Key Repeater** se trouve dans **Auto Clicker**. **Macro Recorder** enregistre dans une fenêtre dédiée, édite les étapes et rejoue les séquences enregistrées vers une fenêtre choisie.
 - **Screen Tools** regroupe la pipette avec historique et palettes et la règle en pixels sur le bureau.
 - **Network Monitor** affiche les débits mesurés par interface. **System Tray Monitor** affiche les compteurs disponibles de Windows, les volumes et les processus et propose des indicateurs de notification.
 
-Les nouveaux modules sont désactivés par défaut. Activez ceux dont vous avez besoin dans leurs réglages. [Fonctionnement et limites Windows](docs/MODULES.md#windows-hub)
+Les outils sont disponibles dès le démarrage de l’agent. Le monitoring collecte en continu et les outils interactifs se déclenchent à la demande. [Fonctionnement et limites Windows](docs/MODULES.md#windows-hub)
 
 ## Contribuer
 

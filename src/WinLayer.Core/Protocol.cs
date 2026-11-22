@@ -1,10 +1,11 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Text.Json;
+using Microsoft.Win32.SafeHandles;
 
 namespace WinLayer.Core;
 
-public enum Page { Dashboard, Battery, General, Updates, AutoClicker, Taskbar, Switcher, Macro, Screen, Network, System, Pin }
+public enum Page { Dashboard, Battery, General, Updates, AutoClicker, Taskbar, Switcher, Macro, Screen, Network, System, Pin, SystemProcesses }
 public enum Command { Status, OpenSettings, Save, RefreshBattery, CheckUpdates, InstallUpdate, Quit, SaveAutoClicker, PauseAutoClicker, RearmAutoClicker, Hub }
 public enum BatterySource { BluetoothLe, HyperXUsb }
 public enum BatteryState { Available, Unknown, Disconnected, Unsupported }
@@ -25,11 +26,12 @@ public static class LocalProtocol
     public static string PipeName { get; } = $"WinLayer.v1.{Environment.UserName}.{CurrentSession()}";
 
     public static async Task<Response> SendAsync(Request request, CancellationToken cancellationToken,
-        Action<int>? progress = null)
+        Action<int>? progress = null, Action<SafePipeHandle>? onConnected = null)
     {
         using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         await pipe.ConnectAsync(2500, cancellationToken);
+        onConnected?.Invoke(pipe.SafePipeHandle);
         await WriteAsync(pipe, request, cancellationToken);
         return await ReadResponseAsync(pipe, progress, cancellationToken);
     }

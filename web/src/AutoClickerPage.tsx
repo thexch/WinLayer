@@ -1,7 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { CircleAlert, Keyboard, Pause, Play } from 'lucide-react'
 import type { AutoClickerOptions, AutoClickerStatus, ClickShortcut } from './bridge'
-import { Switch } from './controls'
 
 const modifiers = [
   { label: 'Ctrl', flag: 2 },
@@ -145,9 +144,6 @@ export function AutoClickerPage({ options, status, canEdit, onSave, onPause, onR
         <span className={`status status-${state === 'active' ? 'positive' : state === 'paused' ? 'warning' : 'neutral'}`}
           aria-live="polite"><span className="status-dot" aria-hidden="true" />{labels[state]}</span>
       </div>
-      <Switch label="Activer Auto Clicker" checked={options.enabled} disabled={!canEdit}
-        description="Les raccourcis fonctionnent aussi quand les réglages sont fermés."
-        onChange={(enabled) => update({ enabled })} />
       <div className="clicker-keyline">
         <span>{options.mode === 'hold' ? 'Maintenir pour cliquer' : 'Démarrer / arrêter'}</span>
         <span>{shortcutLabel(options.shortcut).map((label) => <kbd key={label}>{label}</kbd>)}</span>
@@ -156,11 +152,11 @@ export function AutoClickerPage({ options, status, canEdit, onSave, onPause, onR
         <span>Arrêt d’urgence</span>
         <span>{shortcutLabel(options.emergency).map((label) => <kbd key={label}>{label}</kbd>)}</span>
       </div>
-      {options.enabled && <button type="button" className="button secondary" disabled={!canEdit}
+      <button type="button" className="button secondary" disabled={!canEdit}
         onClick={state === 'paused' ? onRearm : () => { void onPause() }}>
         {state === 'paused' ? <><Play size={16} aria-hidden="true" /> Réarmer</> :
           <><Pause size={16} aria-hidden="true" /> Mettre en pause</>}
-      </button>}
+      </button>
       {(validation || status.error) && <p className="notice" role="alert"><CircleAlert size={16} aria-hidden="true" />
         {validation || status.error}</p>}
     </section>
@@ -215,9 +211,9 @@ export function AutoClickerPage({ options, status, canEdit, onSave, onPause, onR
       <fieldset disabled={!canEdit} className="clicker-fields">
         <legend>Raccourcis globaux</legend>
         <ShortcutField label="Activation" value={options.shortcut} onChange={(shortcut) => update({ shortcut })}
-          onRecord={() => options.enabled && state !== 'paused' ? onPause() : Promise.resolve(true)} />
+          onRecord={() => state !== 'paused' ? onPause() : Promise.resolve(true)} />
         <ShortcutField label="Arrêt d’urgence" value={options.emergency} onChange={(emergency) => update({ emergency })}
-          onRecord={() => options.enabled && state !== 'paused' ? onPause() : Promise.resolve(true)} />
+          onRecord={() => state !== 'paused' ? onPause() : Promise.resolve(true)} />
         <p className="fine">Si une touche est déjà capturée par Windows, utilisez les listes. Échap annule l’enregistrement des touches.</p>
       </fieldset>
     </section>

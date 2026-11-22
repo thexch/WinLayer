@@ -11,7 +11,8 @@ internal static class HubWindows
 
     internal static IntPtr Active => GetForegroundWindow();
 
-    internal static HubWindow[] List(string exclusions) => Enumerate(exclusions, visibleOnly: true);
+    internal static HubWindow[] List(string exclusions, IntPtr foreground) => Enumerate(exclusions, visibleOnly: true)
+        .OrderBy(window => window.Handle == foreground.ToInt64()).ToArray();
 
     internal static HubWindow[] Enumerate(string exclusions, bool visibleOnly)
     {
@@ -21,8 +22,9 @@ internal static class HubWindows
             if (windows.Count >= 200)
                 return false;
 
-            if ((!visibleOnly || IsWindowVisible(handle)) && GetWindow(handle, 4) == IntPtr.Zero &&
-                (GetWindowLongW(handle, -20) & 0x80) == 0 &&
+            var styles = GetWindowLongW(handle, -20);
+            if ((!visibleOnly || IsWindowVisible(handle)) &&
+                ((styles & 0x40000) != 0 || GetWindow(handle, 4) == IntPtr.Zero && (styles & 0x80) == 0) &&
                 (DwmGetWindowAttribute(handle, 14, out int cloaked, 4) != 0 || cloaked == 0) &&
                 Describe(handle) is { } window && !Excluded(window.App, exclusions))
                 windows.Add(window);
@@ -116,6 +118,10 @@ internal static class HubWindows
     internal static bool IsVisible(long hwnd) => IsWindowVisible(new(hwnd));
     internal static IntPtr Taskbar => FindWindowW("Shell_TrayWnd", null);
 
+    internal static Rectangle? TaskbarBounds(IntPtr handle) =>
+        handle != IntPtr.Zero && GetWindowRect(handle, out var rect)
+            ? Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom) : null;
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct NativeRect { public int Left, Top, Right, Bottom; }
     private delegate bool WindowCallback(IntPtr hwnd, IntPtr parameter);
@@ -207,32 +213,43 @@ internal sealed class DecorativeOverlay : HubOverlay
         if (Bounds != area)
         {
             Bounds = area;
-            if (radius > 0)
+            if (radius > 0 || border > 0)
             {
-                var diameter = Math.Min(radius * 2, Math.Min(area.Width, area.Height));
-                var width = area.Width - diameter;
-                var height = area.Height - diameter;
-                using var outline = new System.Drawing.Drawing2D.GraphicsPath();
-                outline.AddArc(0, 0, diameter, diameter, 180, 90);
-                outline.AddArc(width, 0, diameter, diameter, 270, 90);
-                outline.AddArc(width, height, diameter, diameter, 0, 90);
-                outline.AddArc(0, height, diameter, diameter, 90, 90);
-                outline.CloseFigure();
+                var local = new Rectangle(Point.Empty, area.Size);
+                using var outer = Outline(local, radius);
+                var shape = new Region(outer);
+                var inner = Rectangle.Inflate(local, -border, -border);
+                if (border > 0 && inner.Width > 0 && inner.Height > 0)
+                {
+                    using var opening = Outline(inner, Math.Max(0, radius - border));
+                    shape.Exclude(opening);
+                }
                 var previous = Region;
-                Region = new Region(outline);
+                Region = shape;
                 previous?.Dispose();
             }
-            else if (border > 0)
-            {
-                using var hole = new Region(new Rectangle(Point.Empty, area.Size));
-                hole.Exclude(new Rectangle(border, border, Math.Max(0, area.Width - 2 * border), Math.Max(0, area.Height - 2 * border)));
-                var previous = Region;
-                Region = hole.Clone();
-                previous?.Dispose();
-            }
+
         }
         if (!Visible)
             Show();
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath Outline(Rectangle area, int radius)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        var diameter = Math.Min(radius * 2, Math.Min(area.Width, area.Height));
+        if (diameter <= 1)
+        {
+            path.AddRectangle(area);
+            return path;
+        }
+
+        path.AddArc(area.Left, area.Top, diameter, diameter, 180, 90);
+        path.AddArc(area.Right - diameter, area.Top, diameter, diameter, 270, 90);
+        path.AddArc(area.Right - diameter, area.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(area.Left, area.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     [DllImport("user32.dll")]

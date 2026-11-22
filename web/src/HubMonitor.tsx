@@ -103,7 +103,7 @@ export function NetworkPage({ status, data, run, busy }: HubPageProps) {
   const options = data?.tools.network ?? defaultHubOptions('network')
   const metrics = status.metrics
   return <>
-    <NetworkReadings metrics={options.enabled ? metrics : null} options={options} />
+    <NetworkReadings metrics={metrics} options={options} />
     <HubForm tool="network" options={options} key={JSON.stringify(options)} run={run} busy={busy}>
       {(draft, patch) => <>
         <Choice label="Interface réseau" value={draft.adapter}
@@ -130,7 +130,7 @@ const systemViews: readonly (readonly [SystemView, string])[] = [
   ['summary', 'Vue système'], ['cpu', 'CPU'], ['gpu', 'GPU'], ['ram', 'Mémoire'], ['disk', 'Disques'], ['network', 'Réseau'], ['processes', 'Processus'],
 ]
 
-function Processes({ items, busy, run, enabled }: { items: HubProcess[]; busy: boolean; run: HubPageProps['run']; enabled: boolean }) {
+function Processes({ items, busy, run }: { items: HubProcess[]; busy: boolean; run: HubPageProps['run'] }) {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<'ram' | 'cpu' | 'name'>('ram')
   const [target, setTarget] = useState<HubProcess>()
@@ -140,7 +140,7 @@ function Processes({ items, busy, run, enabled }: { items: HubProcess[]; busy: b
 
   return <section className="hub-panel hub-process-panel">
     <div className="hub-panel-heading"><h2>Processus</h2>
-      <button type="button" className="button secondary" disabled={busy || !enabled} onClick={() => { void run({ tool: 'system', action: 'processes' }) }}>
+      <button type="button" className="button secondary" disabled={busy} onClick={() => { void run({ tool: 'system', action: 'processes' }) }}>
         <RefreshCw size={16} aria-hidden="true" /> Actualiser les processus
       </button>
     </div>
@@ -148,7 +148,7 @@ function Processes({ items, busy, run, enabled }: { items: HubProcess[]; busy: b
       <Field label="Rechercher un processus"><input type="search" value={search} onChange={event => setSearch(event.currentTarget.value)} /></Field>
       <Choice label="Tri" value={sort} choices={[[ 'ram', 'Mémoire' ], [ 'cpu', 'Processeur' ], [ 'name', 'Nom' ]]} onChange={setSort} />
     </div>
-    <p className="fine">Deux actualisations sont nécessaires pour calculer le CPU. La mémoire indique l’ensemble de travail.</p>
+    <p className="fine">Le taux CPU apparaît après deux mesures. La mémoire indique l’ensemble de travail.</p>
     {target && <div className="notice" role="group" aria-label="Confirmer la fermeture">
       <span>Terminer {target.name} (PID {target.pid}) ? Le travail en cours peut être perdu.</span>
       <button type="button" className="button secondary" onClick={() => setTarget(undefined)}>Annuler</button>
@@ -161,7 +161,7 @@ function Processes({ items, busy, run, enabled }: { items: HubProcess[]; busy: b
       <div><dt>Exécutable</dt><dd>{details.path ?? 'Chemin indisponible'}</dd></div>
       <div><dt>Démarrage</dt><dd>{details.started ? new Date(details.started).toLocaleString('fr-FR') : '—'}</dd></div>
     </dl>}
-    {!shown.length ? <p className="fine">{search ? 'Aucun processus correspondant.' : 'Actualisez pour charger la liste des processus.'}</p> :
+    {!shown.length ? <p className="fine">{search ? 'Aucun processus correspondant.' : 'Collecte de la liste des processus…'}</p> :
       <div className="hub-table-wrap"><table>
         <thead><tr><th scope="col">Processus</th><th scope="col">PID</th><th scope="col">CPU</th><th scope="col">Mémoire</th><th scope="col">Action</th></tr></thead>
         <tbody>{shown.map(item => <tr key={`${item.pid}-${item.started}`}>
@@ -226,15 +226,15 @@ function Hardware({ metrics, view, history }: { metrics?: HubMetrics | null; vie
   </section>
 }
 
-export function SystemPage({ status, data, run, busy }: HubPageProps) {
+export function SystemPage({ status, data, run, busy, setProcessView }: HubPageProps) {
   const [view, setView] = useState<SystemView>('summary')
   const options = data?.tools.system ?? defaultHubOptions('system')
   const optionsNetwork = data?.tools.network ?? defaultHubOptions('network')
-  const metrics = options.enabled ? status.metrics : null
+  const metrics = status.metrics
   return <>
-    <TabButtons label="Ressources système" choices={systemViews} active={view} select={setView} />
+    <TabButtons label="Ressources système" choices={systemViews} active={view} select={next => { setView(next); setProcessView?.(next === 'processes') }} />
     {view === 'network' ? <NetworkReadings metrics={metrics} options={optionsNetwork} /> :
-      view === 'processes' ? <Processes items={metrics?.processes ?? []} busy={busy} run={run} enabled={options.enabled} /> :
+      view === 'processes' ? <Processes items={metrics?.processes ?? []} busy={busy} run={run} /> :
       <Hardware view={view} metrics={metrics} history={options.history} />}
     <HubForm tool="system" options={options} key={JSON.stringify(options)} run={run} busy={busy}>
       {(draft, patch) => <>

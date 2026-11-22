@@ -8,7 +8,12 @@ internal sealed class WindowSwitcher : HubOverlay
     private readonly HubWindow[] _windows;
     private readonly TextBox _search = new() { Dock = DockStyle.Top, PlaceholderText = "Rechercher une fenêtre" };
     private readonly ListView _list;
-    private readonly Panel _preview = new() { Dock = DockStyle.Right, Width = 225 };
+    private readonly Panel _preview = new() { Dock = DockStyle.Fill };
+    private readonly Label _previewMessage = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
+    private readonly Label _windowTitle = new() { Dock = DockStyle.Top, Height = 48, AutoEllipsis = true, Padding = new Padding(10, 8, 10, 4) };
+    private readonly Label _hint = new() { Dock = DockStyle.Bottom, Height = 27, TextAlign = ContentAlignment.MiddleLeft };
+    private int _selectedIndex;
+    private bool _selecting;
     private readonly ImageList _icons = new() { ImageSize = new(32, 32), ColorDepth = ColorDepth.Depth32Bit };
     private readonly Action<string> _feedback;
     private readonly Action<HubWindow>? _selected;
@@ -22,36 +27,76 @@ internal sealed class WindowSwitcher : HubOverlay
         _feedback = feedback;
         _selected = selected;
         BackColor = Color.FromArgb(29, 31, 55);
-        Padding = new Padding(18);
+        var accent = ColorTranslator.FromHtml(options.Color);
+        var panel = Color.FromArgb(36, 39, 68);
+        ForeColor = Color.FromArgb(242, 241, 255);
+        Padding = new Padding(20, 17, 20, 13);
+        _search.BorderStyle = BorderStyle.FixedSingle;
+        _search.BackColor = panel;
+        _search.ForeColor = ForeColor;
+        _search.AccessibleName = "Rechercher une fenêtre";
+        _hint.ForeColor = Color.FromArgb(189, 194, 224);
         _windows = windows;
         _list = new ListView
         {
             Dock = DockStyle.Fill, MultiSelect = false, HideSelection = false, FullRowSelect = true,
-            BackColor = Color.FromArgb(35, 38, 65), ForeColor = Color.White,
+            BackColor = panel, ForeColor = ForeColor, BorderStyle = BorderStyle.None, HeaderStyle = ColumnHeaderStyle.Nonclickable,
             AccessibleName = "Fenêtres ouvertes",
             View = options.Layout == SwitcherLayout.Cards ? View.Tile : options.Layout == SwitcherLayout.List ? View.Details : View.LargeIcon,
             SmallImageList = _icons, LargeImageList = _icons, TileSize = new Size(235, 54)
         };
-        _list.Columns.Add("Fenêtre", 255);
-        _list.Columns.Add("Application", 105);
-        _list.SelectedIndexChanged += (_, _) => UpdatePreview();
-        _list.DoubleClick += (_, _) => SelectWindow();
+        _list.Columns.Add("Fenêtre", 260);
+        _list.Columns.Add("Application", 125);
+        _list.SelectedIndexChanged += (_, _) =>
+        {
+            if (_list.SelectedIndices.Count == 1)
+                _selectedIndex = _list.SelectedIndices[0];
+            UpdatePreview();
+        };
+        _list.DoubleClick += async (_, _) => await SelectWindowAsync();
         _search.TextChanged += (_, _) => Filter();
-        _preview.BackColor = ColorTranslator.FromHtml(options.Color);
-        Controls.Add(_list);
-        Controls.Add(_preview);
-        Controls.Add(_search);
+
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        var width = Math.Min(area.Width, options.Width);
-        var height = Math.Min(area.Height, 430);
+        var scale = DeviceDpi / 96d;
+        var width = Math.Min(area.Width, (int)(options.Width * scale));
+        var height = Math.Min(area.Height, (int)(460 * scale));
         Bounds = new(area.Left + (area.Width - width) / 2, area.Top + (area.Height - height) / 2, width, height);
-        if (width < 600)
-            _preview.Visible = false;
+        var headline = new Label
+        {
+            Dock = DockStyle.Top, Text = selected is null ? "Changer de fenêtre" : "Choisir la fenêtre cible",
+            Height = 40, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font.FontFamily, 15, FontStyle.Bold)
+        };
+        headline.Disposed += (_, _) => headline.Font.Dispose();
+        var previewPanel = new Panel { Dock = DockStyle.Right, Width = Math.Clamp(width / 2, 225, 430), Padding = new Padding(9, 0, 0, 0) };
+        previewPanel.Visible = width >= 620;
+        _preview.BackColor = Color.FromArgb(20, 22, 39);
+        _previewMessage.Text = "Aperçu indisponible";
+        _previewMessage.ForeColor = _hint.ForeColor;
+        _preview.Controls.Add(_previewMessage);
+        _windowTitle.BackColor = panel;
+        _windowTitle.ForeColor = ForeColor;
+        previewPanel.Controls.Add(_preview);
+        previewPanel.Controls.Add(_windowTitle);
+        var marker = new Panel { Height = 3, Dock = DockStyle.Top, BackColor = accent };
+        previewPanel.Controls.Add(marker);
+
+        var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 12, 0, 3) };
+        body.Controls.Add(_list);
+        body.Controls.Add(previewPanel);
+        Controls.Add(body);
+        Controls.Add(_hint);
+        Controls.Add(_search);
+        Controls.Add(headline);
         _icons.Images.Add("default", SystemIcons.Application);
         Filter();
         Shown += (_, _) =>
         {
             _search.Focus();
+            if (_list.View == View.Details)
+            {
+                _list.Columns[1].Width = Math.Clamp(_list.ClientSize.Width / 3, 85, 140);
+                _list.Columns[0].Width = Math.Max(110, _list.ClientSize.Width - _list.Columns[1].Width - SystemInformation.VerticalScrollBarWidth);
+            }
             UpdatePreview();
             _ = LoadIconsAsync();
         };
@@ -59,16 +104,23 @@ internal sealed class WindowSwitcher : HubOverlay
 
     private void Filter()
     {
+        var query = _search.Text.Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         _list.BeginUpdate();
         try
         {
             _list.Items.Clear();
             foreach (var window in _windows)
-                if (window.Title.Contains(_search.Text, StringComparison.CurrentCultureIgnoreCase) ||
-                    window.App.Contains(_search.Text, StringComparison.CurrentCultureIgnoreCase))
+                if (query.All(part => window.Title.Contains(part, StringComparison.CurrentCultureIgnoreCase) ||
+                    window.App.Contains(part, StringComparison.CurrentCultureIgnoreCase)))
                     _list.Items.Add(new ListViewItem([window.Title, window.App]) { Tag = window, ImageKey = _icons.Images.ContainsKey(window.App) ? window.App : "default" });
+            _selectedIndex = 0;
             if (_list.Items.Count > 0)
+            {
                 _list.Items[0].Selected = true;
+                _list.Items[0].Focused = true;
+            }
+            _hint.Text = _list.Items.Count == 0 ? "Aucune fenêtre ne correspond · Échap pour fermer" :
+                $"{_list.Items.Count} fenêtre(s)  ·  ↑ ↓ Parcourir   Entrée Ouvrir   Échap Fermer";
         }
         finally { _list.EndUpdate(); }
         UpdatePreview();
@@ -78,30 +130,55 @@ internal sealed class WindowSwitcher : HubOverlay
     {
         if (keyData == Keys.Enter)
         {
-            SelectWindow();
+            _ = SelectWindowAsync();
             return true;
         }
-        if (_search.Focused && (keyData is Keys.Down or Keys.Up) && _list.Items.Count > 0)
+        if ((_search.Focused && keyData is Keys.Down or Keys.Up || keyData is Keys.Tab or (Keys.Shift | Keys.Tab)) &&
+            _list.Items.Count > 0)
         {
-            var index = _list.SelectedIndices.Count == 1 ? _list.SelectedIndices[0] : 0;
-            var item = _list.Items[Math.Clamp(index + (keyData == Keys.Down ? 1 : -1), 0, _list.Items.Count - 1)];
+            var step = keyData is Keys.Up or (Keys.Shift | Keys.Tab) ? -1 : 1;
+            _selectedIndex = (_selectedIndex + step + _list.Items.Count) % _list.Items.Count;
+            var item = _list.Items[_selectedIndex];
             item.Selected = true;
+            item.Focused = true;
             item.EnsureVisible();
             return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    private void SelectWindow()
+    private async Task SelectWindowAsync()
     {
-        if (_list.SelectedItems.Count != 1 || _list.SelectedItems[0].Tag is not HubWindow window)
+        if (_selecting || _list.Items.Count <= _selectedIndex || _list.Items[_selectedIndex].Tag is not HubWindow window)
             return;
 
-        if (!HubWindows.Activate(window))
-            _feedback("Windows n’a pas activé cette fenêtre. Elle a pu se fermer ou refuser le changement de focus.");
-        else
+        _selecting = true;
+        try
+        {
+            var activated = HubWindows.Activate(window);
+            if (!activated && HubWindows.IsSame(window))
+            {
+                await Task.Delay(75);
+                if (IsDisposed)
+                    return;
+                activated = HubWindows.Activate(window);
+            }
+            if (!activated)
+            {
+                const string message = "Cette fenêtre est indisponible. Sélectionnez-en une autre.";
+                _feedback(message);
+                _hint.Text = message;
+                return;
+            }
             _selected?.Invoke(window);
-        Close();
+            Close();
+        }
+        catch (Exception error)
+        {
+            WindowsSettings.Log("Activation de la fenêtre.", error);
+            _hint.Text = "Impossible d’ouvrir cette fenêtre.";
+        }
+        finally { _selecting = false; }
     }
 
     private async Task LoadIconsAsync()
@@ -135,11 +212,17 @@ internal sealed class WindowSwitcher : HubOverlay
     {
         var revision = ++_previewRevision;
         RemovePreview();
-        if (!_preview.Visible || !IsHandleCreated || _list.SelectedItems.Count != 1 ||
-            _list.SelectedItems[0].Tag is not HubWindow window)
+        _previewMessage.Visible = true;
+        if (_list.Items.Count <= _selectedIndex || _list.Items[_selectedIndex].Tag is not HubWindow window)
+        {
+            _windowTitle.Text = "Aucune fenêtre";
+            return;
+        }
+        _windowTitle.Text = $"{window.App} · {window.Title}";
+        if (!_preview.Visible || !IsHandleCreated)
             return;
         var hwnd = Handle;
-        var bounds = _preview.Bounds;
+        var bounds = RectangleToClient(_preview.RectangleToScreen(_preview.ClientRectangle));
         try
         {
             var preview = await Task.Run(() => RegisterThumbnail(hwnd, window, bounds));
@@ -150,6 +233,7 @@ internal sealed class WindowSwitcher : HubOverlay
                 return;
             }
             _thumbnail = preview;
+            _previewMessage.Visible = preview == IntPtr.Zero;
         }
         catch (Exception error)
         {
@@ -161,10 +245,18 @@ internal sealed class WindowSwitcher : HubOverlay
     {
         if (!HubWindows.IsSame(window) || DwmRegisterThumbnail(hwnd, new(window.Handle), out var preview) != 0)
             return IntPtr.Zero;
+        bounds.Inflate(-10, -10);
+        if (DwmQueryThumbnailSourceSize(preview, out var source) == 0 && source.Width > 0 && source.Height > 0)
+        {
+            var scale = Math.Min((double)bounds.Width / source.Width, (double)bounds.Height / source.Height);
+            var width = (int)(source.Width * scale);
+            var height = (int)(source.Height * scale);
+            bounds = new Rectangle(bounds.X + (bounds.Width - width) / 2, bounds.Y + (bounds.Height - height) / 2, width, height);
+        }
         var layout = new Thumbnail
         {
             Flags = 1 | 4 | 8,
-            Destination = new() { Left = bounds.Left + 8, Top = bounds.Top + 8, Right = bounds.Right - 8, Bottom = bounds.Bottom - 8 },
+            Destination = new() { Left = bounds.Left, Top = bounds.Top, Right = bounds.Right, Bottom = bounds.Bottom },
             Opacity = 255,
             Visible = 1
         };
@@ -201,6 +293,7 @@ internal sealed class WindowSwitcher : HubOverlay
         public int Visible, SourceClientOnly;
     }
 
+    [DllImport("dwmapi.dll")] private static extern int DwmQueryThumbnailSourceSize(IntPtr thumbnail, out Size size);
     [DllImport("dwmapi.dll")] private static extern int DwmRegisterThumbnail(IntPtr destination, IntPtr source, out IntPtr thumbnail);
     [DllImport("dwmapi.dll")] private static extern int DwmUnregisterThumbnail(IntPtr thumbnail);
     [DllImport("dwmapi.dll")] private static extern int DwmUpdateThumbnailProperties(IntPtr thumbnail, in Thumbnail layout);

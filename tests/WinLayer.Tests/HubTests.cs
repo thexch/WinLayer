@@ -8,15 +8,28 @@ namespace WinLayer.Tests;
 public sealed class HubTests
 {
     [TestMethod]
-    public void DefaultsAreValidInactiveAndUseOriginalPreferenceShape()
+    public void DefaultsAreReadyWithoutApplyingATaskbarEffect()
     {
         foreach (var tool in Enum.GetValues<HubTool>())
         {
             var options = new HubPreferences().Get(tool);
             Assert.IsTrue(options.IsValid(), $"{tool}");
-            Assert.IsFalse(options.Enabled);
+            Assert.IsTrue(options.Enabled);
         }
         Assert.IsNull(new Preferences().Normalize().Hub);
+        Assert.AreEqual(TaskbarEffect.Windows, new HubPreferences().Get(HubTool.Taskbar).TaskbarEffect);
+    }
+
+    [TestMethod]
+    public void LegacyTaskbarSwitchSelectsTheEquivalentEffect()
+    {
+        var prior = HubOptions.Default(HubTool.Taskbar) with { TaskbarEffect = null, Enabled = false };
+        var preferences = new HubPreferences { Tools = new() { [HubTool.Taskbar] = prior } };
+        Assert.AreEqual(TaskbarEffect.Windows, preferences.Get(HubTool.Taskbar).TaskbarEffect);
+        preferences.Tools[HubTool.Taskbar] = prior with { Enabled = true };
+        Assert.AreEqual(TaskbarEffect.Accent, preferences.Get(HubTool.Taskbar).TaskbarEffect);
+        preferences.Tools[HubTool.Taskbar] = prior with { TaskbarEffect = TaskbarEffect.Frame };
+        Assert.AreEqual(TaskbarEffect.Frame, preferences.Get(HubTool.Taskbar).TaskbarEffect);
     }
 
     [TestMethod]

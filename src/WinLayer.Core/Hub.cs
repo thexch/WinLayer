@@ -3,6 +3,7 @@ namespace WinLayer.Core;
 public enum HubTool { Taskbar, Switcher, Macro, Repeater, Picker, Ruler, Network, System, Pin }
 public enum HubAction { Configure, Open, Stop, Rearm, SaveMacro, DeleteMacro, Play, PauseRecording, Color, PinAllOff, Processes, EndProcess, CopyColor, ExportMacro }
 public enum MacroKind { Wait, Move, Left, Right, Middle, Key }
+public enum TaskbarEffect { Windows, Accent, Frame, Tint }
 public enum SwitcherLayout { Grid, List, Cards }
 public enum RulerMode { Free, Horizontal, Vertical }
 public enum ColorFormat { Hex, Rgb, Hsl }
@@ -19,6 +20,7 @@ public sealed record HubOptions
     public string Exclusions { get; init; } = "";
     public bool Indicator { get; init; } = true;
     public string Color { get; init; } = "#7669DD";
+    public TaskbarEffect? TaskbarEffect { get; init; }
     public int Opacity { get; init; } = 75;
     public int Size { get; init; } = 4;
     public int Zoom { get; init; } = 12;
@@ -50,6 +52,7 @@ public sealed record HubOptions
         Opacity is >= 5 and <= 100 && Size is >= 1 and <= 24 && Zoom is >= 4 and <= 24 &&
         Radius is >= 0 and <= 16 && Inset is >= 0 and <= 80 &&
         Threshold is >= 1 and <= 100 && Width is >= 420 and <= 1000 && Enum.IsDefined(Layout) &&
+        (TaskbarEffect is null || Enum.IsDefined(TaskbarEffect.Value)) &&
         Enum.IsDefined(RulerMode) && Enum.IsDefined(ColorFormat) && Enum.IsDefined(RateUnit) && TrayMetrics is { Length: <= 3 } &&
         TrayMetrics.All(static metric => metric is TrayMetric.Cpu or TrayMetric.Ram or TrayMetric.Gpu) &&
         TrayMetrics.Distinct().Count() == TrayMetrics.Length &&
@@ -66,6 +69,8 @@ public sealed record HubOptions
         >= 0x30 and <= 0x39 or >= 0x41 and <= 0x5A or >= 0x70 and <= 0x87;
     public static HubOptions Default(HubTool tool) => new()
     {
+        Enabled = true,
+        TaskbarEffect = tool == HubTool.Taskbar ? WinLayer.Core.TaskbarEffect.Windows : null,
         Shortcut = new(0x70 + (int)tool, 2 | 4),
         Indicator = tool != HubTool.Network,
         Repeat = new()
@@ -82,10 +87,10 @@ public sealed record ColorPalette(string Name, string[] Colors)
         Colors.All(HubOptions.IsColor);
 }
 
-public sealed record TaskbarStyle(string Name, string Color, int Opacity, int Size, int Radius = 0, int Inset = 0)
+public sealed record TaskbarStyle(string Name, string Color, int Opacity, int Size, int Radius = 0, int Inset = 0, TaskbarEffect Effect = TaskbarEffect.Accent)
 {
     public bool IsValid() => Name is { Length: > 0 and <= 40 } && HubOptions.IsColor(Color) &&
-        Opacity is >= 5 and <= 100 && Size is >= 1 and <= 24 && Radius is >= 0 and <= 16 && Inset is >= 0 and <= 80;
+        Opacity is >= 5 and <= 100 && Size is >= 1 and <= 24 && Radius is >= 0 and <= 16 && Inset is >= 0 and <= 80 && Enum.IsDefined(Effect);
 }
 
 public sealed record MacroStep(MacroKind Kind, int Delay, int X = 0, int Y = 0, int Key = 0, int Modifiers = 0)
@@ -108,7 +113,16 @@ public sealed record HubPreferences
     public string[] Colors { get; init; } = [];
     public string[] Favorites { get; init; } = [];
 
-    public HubOptions Get(HubTool tool) => Tools.GetValueOrDefault(tool) ?? HubOptions.Default(tool);
+    public HubOptions Get(HubTool tool)
+    {
+        if (!Tools.TryGetValue(tool, out var options))
+            return HubOptions.Default(tool);
+        // Older versions used the module switch to control whether its accent was applied.
+        var effect = tool == HubTool.Taskbar
+            ? options.TaskbarEffect ?? (options.Enabled ? TaskbarEffect.Accent : TaskbarEffect.Windows)
+            : options.TaskbarEffect;
+        return options.Enabled && options.TaskbarEffect == effect ? options : options with { Enabled = true, TaskbarEffect = effect };
+    }
     public HubPreferences Normalize() => this with
     {
         Tools = (Tools ?? []).Where(static pair => Enum.IsDefined(pair.Key) && pair.Value is not null && pair.Value.IsValid())

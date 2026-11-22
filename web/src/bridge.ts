@@ -69,7 +69,7 @@ export interface AgentStatus {
 
 export type Command =
   | { action: 'ready' | 'refreshBattery' | 'checkUpdates' | 'pauseAutoClicker' | 'rearmAutoClicker' }
-  | { action: 'status'; view?: Page }
+  | { action: 'status'; view?: Page | 'systemProcesses' }
   | { action: 'saveAutoClicker'; clickerOptions: AutoClickerOptions }
   | { action: 'save'; preferences: Preferences }
   | { action: 'installUpdate'; version: string }

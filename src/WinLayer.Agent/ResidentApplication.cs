@@ -111,6 +111,11 @@ internal sealed class ResidentApplication : ApplicationContext
                 WindowsSettings.Log("Initialisation des préférences.", error);
             }
 
+            _preferences = _preferences with
+            {
+                AutoClicker = _preferences.AutoClicker with { Enabled = true },
+                Battery = _preferences.Battery with { Enabled = true }
+            };
             try
             {
                 _clicker.Reserve(_preferences.AutoClicker);
@@ -191,7 +196,7 @@ internal sealed class ResidentApplication : ApplicationContext
                     break;
                 case Command.Quit:
                     break;
-                case Command.OpenSettings when Enum.IsDefined(request.Page):
+                case Command.OpenSettings when Enum.IsDefined(request.Page) && request.Page != Page.SystemProcesses:
                     OpenSettings(request.Page);
                     break;
                 case Command.Save when request.Preferences is not null:
@@ -250,6 +255,7 @@ internal sealed class ResidentApplication : ApplicationContext
 
     private async Task<Response> CommitClickerAsync(AutoClickerOptions options)
     {
+        options = options with { Enabled = true };
         try
         {
             try
@@ -281,7 +287,7 @@ internal sealed class ResidentApplication : ApplicationContext
         await _preferenceGate.WaitAsync(_stop.Token);
         try
         {
-            await SaveGeneralAsync(preferences with { AutoClicker = _preferences.AutoClicker, Hub = _preferences.Hub });
+            await SaveGeneralAsync(preferences with { AutoClicker = _preferences.AutoClicker, Hub = _preferences.Hub, Battery = preferences.Battery with { Enabled = true } });
         }
         finally { _preferenceGate.Release(); }
     }

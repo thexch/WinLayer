@@ -30,8 +30,8 @@ const navigation = [
 const hubPages = {
   macro: [MacroPage, 'Macro Recorder', 'Enregistrez, éditez et rejouez vos séquences locales.'],
   screen: [ScreenToolsPage, 'Screen Tools', 'Prélevez les couleurs et mesurez les pixels du bureau.'],
-  taskbar: [TaskbarPage, 'Taskbar Studio', 'Ajoutez un liseré personnel à la barre des tâches.'],
-  switcher: [SwitcherPage, 'Alt-Tab Customizer', 'Un sélecteur de fenêtres en complément du raccourci Windows.'],
+  taskbar: [TaskbarPage, 'Taskbar Studio', 'Compose un style, prévisualise-le et applique-le à la barre des tâches.'],
+  switcher: [SwitcherPage, 'Alt-Tab Customizer', 'Recherche une fenêtre ouverte et retrouve-la grâce à son aperçu.'],
   pin: [PinPage, 'Always on Top', 'Gardez les fenêtres de votre choix au premier plan.'],
   network: [NetworkPage, 'Network Monitor', 'Suivez ce qui transite sur votre interface réseau.'],
   system: [SystemPage, 'System Tray Monitor', 'Diagnostiquez les ressources et les processus de votre PC.'],
@@ -108,9 +108,8 @@ function BatteryReading({ device, threshold }: { device: BatteryDevice; threshol
 
 function Readings({ status, limit }: { status?: AgentStatus; limit?: number }) {
   const battery = status?.battery
-  if (!status || !battery || !status.preferences.battery.enabled || !battery.devices.length) {
+  if (!status || !battery || !battery.devices.length) {
     const message = !status ? 'Les données apparaîtront quand l’agent répondra.' :
-      !status.preferences.battery.enabled ? 'Activez Device Battery pour afficher les niveaux de charge.' :
       battery?.error ?? (battery?.updatedAt ? 'Aucun périphérique compatible détecté.' : 'Recherche des périphériques…')
     return <div className="empty-state">
       <span className="tile-icon"><Bluetooth size={20} aria-hidden="true" /></span>
@@ -138,7 +137,7 @@ function GlassLayers() {
 }
 
 function Dashboard({ status, go }: { status?: AgentStatus; go: (page: Page) => void }) {
-  const batteryEnabled = status?.preferences.battery.enabled
+  const batteryEnabled = Boolean(status)
   const known = status?.battery.devices.filter((device) => device.state === 'available' && device.percentage !== null).length ?? 0
   return <>
     <Header title="Vue d’ensemble" description="Retrouvez vos batteries, l’état de WinLayer et vos réglages." />
@@ -183,7 +182,7 @@ function BatteryForm({ options, canEdit, onSave }: {
   const [draft, setDraft] = useState(options)
   const changed = draft.alerts !== options.alerts || draft.lowThreshold !== options.lowThreshold || draft.refreshMinutes !== options.refreshMinutes
   return <form className="settings-body" onSubmit={(event) => { event.preventDefault(); onSave(draft) }}>
-      <fieldset disabled={!canEdit || !options.enabled}>
+      <fieldset disabled={!canEdit}>
         <Range label="Intervalle de secours" min={2} max={60} unit="min" value={draft.refreshMinutes}
           onChange={(refreshMinutes) => setDraft({ ...draft, refreshMinutes })} />
         <Switch label="Alerte de batterie faible" checked={draft.alerts} onChange={(alerts) => setDraft({ ...draft, alerts })} />
@@ -276,7 +275,7 @@ function UpdatePage({ status, canEdit, onCheck, onInstall, downloading, progress
 }
 
 export function App() {
-  const { status, page, connection, feedback, busy, downloadProgress, go, act } = useAgent()
+  const { status, page, connection, feedback, busy, downloadProgress, go, act, setProcessView } = useAgent()
   const [automation, setAutomation] = useState<'clicker' | 'repeater'>('clicker')
   const [preview, setPreview] = useState<Appearance>()
   const main = useRef<HTMLElement>(null)
@@ -303,7 +302,7 @@ export function App() {
   }
 
   const hubPage = page in hubPages ? hubPages[page as keyof typeof hubPages] : undefined
-  const hubProps = status?.hub ? { status: status.hub, data: preferences?.hub, run: runHub, busy: !canEdit } : undefined
+  const hubProps = status?.hub ? { status: status.hub, data: preferences?.hub, run: runHub, busy: !canEdit, setProcessView } : undefined
   const Module = hubPage?.[0]
 
   return <>
@@ -318,7 +317,7 @@ export function App() {
           {page === 'battery' && <>
             <Header title="Périphériques" description="Retrouvez les niveaux de charge transmis à Windows.">
               <button type="button" className={`button secondary ${busy === 'refreshBattery' ? 'refreshing' : ''}`}
-                disabled={!canEdit || !options?.enabled} onClick={() => { void act({ action: 'refreshBattery' }, 'Actualisation demandée…') }}>
+                disabled={!canEdit || !options} onClick={() => { void act({ action: 'refreshBattery' }, 'Actualisation demandée…') }}>
                 <RefreshCw size={17} aria-hidden="true" /> Actualiser
               </button>
             </Header>
@@ -332,11 +331,9 @@ export function App() {
               </section>
               <section aria-labelledby="battery-options" className="battery-panel">
                 <div className="section-heading"><h2 id="battery-options">Device Battery</h2><BatteryLow size={20} aria-hidden="true" /></div>
-                <Switch label="Surveiller les batteries" checked={options?.enabled ?? false} disabled={!canEdit || !options}
-                  onChange={(enabled) => { if (preferences && options) save({ ...preferences, battery: { ...options, enabled } }) }} />
                 <Switch label="Bandeau batterie dans la barre des tâches" checked={preferences?.batteryTrayIcons ?? true}
                   description="Affiche les pictogrammes et les pourcentages à gauche de la zone de notification."
-                  disabled={!canEdit || !options?.enabled}
+                  disabled={!canEdit || !options}
                   onChange={(batteryTrayIcons) => { if (preferences) save({ ...preferences, batteryTrayIcons }) }} />
                 {options && <details className="settings-disclosure">
                   <summary><SlidersHorizontal size={18} aria-hidden="true" /> Configurer la lecture <ChevronDown size={18} aria-hidden="true" /></summary>

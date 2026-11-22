@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
-import { Command, Power } from 'lucide-react'
+import { Command } from 'lucide-react'
 import type { ClickShortcut } from './bridge'
 import { hotkeyKeys, keyName, modifierNames, shortcutName, virtualKeys, type HubOptions, type HubRequest, type HubTool } from './hub'
 
@@ -70,12 +70,12 @@ export function HubForm({ tool, options, run, busy, children, extra, status }: {
       return
     }
     setShortcutError('')
-    await run({ tool, action: 'configure', options: candidate })
+    await run({ tool, action: 'configure', options: { ...candidate, enabled: true } })
   }
 
   return <div className="hub-tool-layout">
     <div className="hub-module-controls">
-      <div className={`status status-${options.enabled ? 'positive' : 'neutral'}`}><span className="status-dot" />{status ?? (options.enabled ? 'Activé' : 'Désactivé')}</div>
+      {status && <div className="status status-neutral"><span className="status-dot" />{status}</div>}
       {hasShortcut && <div className="hub-shortcut-display"><Command size={16} aria-hidden="true" /><kbd>{shortcutName(activeShortcut)}</kbd></div>}
       {extra}
     </div>
@@ -83,10 +83,7 @@ export function HubForm({ tool, options, run, busy, children, extra, status }: {
       <fieldset disabled={busy}>
         <div className="hub-panel-heading">
           <h2>Configuration</h2>
-          <button type="button" className="button secondary" aria-pressed={options.enabled}
-            onClick={() => { void save({ ...draft, enabled: !options.enabled }) }}>
-            <Power size={16} aria-hidden="true" /> {options.enabled ? 'Désactiver' : 'Activer'}
-          </button>
+
         </div>
         {children(draft, patch)}
         {shortcutError && <p role="alert" className="notice">{shortcutError}</p>}

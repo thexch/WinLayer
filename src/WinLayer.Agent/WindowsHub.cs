@@ -42,31 +42,26 @@ internal sealed class WindowsHub : IDisposable
 
     public void Initialize(HubPreferences preferences)
     {
-        _preferences = new() { Macros = preferences.Macros, Colors = preferences.Colors, Favorites = preferences.Favorites };
-        foreach (var (tool, options) in preferences.Tools)
+        _preferences = preferences;
+        foreach (var tool in Enum.GetValues<HubTool>())
         {
+            var options = preferences.Get(tool);
             try { Reserve(tool, options); Apply(tool, preferences); }
             catch (Exception error)
             {
                 if (_errors.Count < 9)
                     _errors[tool] = $"Réactivation impossible · {error.Message}";
                 if (tool == HubTool.Repeater)
-                    _repeat.RejectStartup(options.Repeat with { Enabled = options.Enabled }, error.Message);
+                    _repeat.RejectStartup(options.Repeat with { Enabled = true }, error.Message);
                 WindowsSettings.Log($"Module {tool}.", error);
             }
             finally { Retain(tool); }
         }
-        _preferences = preferences;
-        // A failed reservation cannot leave an active automation with only one shortcut.
-        foreach (var (tool, _) in preferences.Tools)
-            Retain(tool);
+
     }
 
     public void Reserve(HubTool tool, HubOptions options)
     {
-        if (!options.Enabled)
-            return;
-
         if (tool == HubTool.Repeater)
         {
             var keys = new ClickShortcut(options.OutputKey, options.OutputModifiers);
@@ -77,7 +72,7 @@ internal sealed class WindowsHub : IDisposable
         else if (HasShortcut(tool))
         {
             var repeat = _preferences.Get(HubTool.Repeater);
-            if (repeat.Enabled && new ClickShortcut(repeat.OutputKey, repeat.OutputModifiers) == options.Shortcut)
+            if (new ClickShortcut(repeat.OutputKey, repeat.OutputModifiers) == options.Shortcut)
                 throw new InvalidOperationException("Cette combinaison est utilisée comme sortie de Key Repeater.");
             if (tool == HubTool.Macro && options.Shortcut == options.Repeat.Emergency)
                 throw new InvalidOperationException("Les raccourcis de lecture et d’arrêt doivent être différents.");
@@ -98,7 +93,7 @@ internal sealed class WindowsHub : IDisposable
             return;
         var options = _preferences.Get(tool);
         var owner = _owners[tool];
-        if (options.Enabled && _hotkeys.Owns(owner, options.Shortcut) &&
+        if (_hotkeys.Owns(owner, options.Shortcut) &&
             (tool != HubTool.Macro || _hotkeys.Owns(owner, options.Repeat.Emergency)))
             _hotkeys.Retain(owner, tool == HubTool.Macro ? [options.Shortcut, options.Repeat.Emergency] : [options.Shortcut]);
         else
@@ -112,17 +107,11 @@ internal sealed class WindowsHub : IDisposable
         var options = preferences.Get(tool);
         _preferences = preferences;
         _errors.Remove(tool);
-        if (!options.Enabled)
-        {
-            CancelSwitcher(tool);
-            if (_overlayTool == tool)
-                _overlay?.Close();
-        }
         switch (tool)
         {
             case HubTool.Repeater:
                 _repeat.Stop();
-                _repeat.Apply(options.Repeat with { Enabled = options.Enabled });
+                _repeat.Apply(options.Repeat with { Enabled = true });
                 break;
             case HubTool.Macro:
                 _macros.Stop();
@@ -132,23 +121,21 @@ internal sealed class WindowsHub : IDisposable
             case HubTool.Taskbar:
                 _taskbar?.Dispose();
                 _taskbar = null;
-                if (options.Enabled)
-                    _taskbar = new(ColorTranslator.FromHtml(options.Color), options.Opacity);
+                if (options.TaskbarEffect != TaskbarEffect.Windows)
+                    _taskbar = new(ColorTranslator.FromHtml(options.Color),
+                        options.TaskbarEffect == TaskbarEffect.Tint ? Math.Min(35, options.Opacity) : options.Opacity);
                 SetPlacement();
                 break;
             case HubTool.Pin:
                 _ruleSuppressed.Clear();
-                if (!options.Enabled)
-                    UnpinAll();
-                else
+                foreach (var old in _pins.Values.ToArray())
                 {
-                    foreach (var old in _pins.Values.ToArray())
+                    if (HubWindows.Excluded(old.Window.App, options.Exclusions))
+                        Unpin(old.Window.Handle);
+                    else
                     {
                         old.Border?.Dispose();
-                        if (HubWindows.Excluded(old.Window.App, options.Exclusions))
-                            Unpin(old.Window.Handle);
-                        else
-                            _pins[old.Window.Handle] = (old.Window, MakeBorder(options));
+                        _pins[old.Window.Handle] = (old.Window, MakeBorder(options));
                     }
                 }
                 SetPlacement();
@@ -179,8 +166,6 @@ internal sealed class WindowsHub : IDisposable
     private void OnHotkey(HubTool tool, ClickShortcut pressed)
     {
         var options = _preferences.Get(tool);
-        if (!options.Enabled)
-            return;
         if (tool == HubTool.Macro && pressed == options.Repeat.Emergency)
         {
             _macros.Stop();
@@ -204,14 +189,12 @@ internal sealed class WindowsHub : IDisposable
         }
     }
 
-    public void SettingsView(Page page) => _monitor.SetView(page);
+    public void SettingsView(Page page) => _monitor.SetProcessView(page == Page.SystemProcesses);
 
     public async Task RunAsync(HubRequest request)
     {
         var tool = request.Tool;
         var options = _preferences.Get(tool);
-        if (!options.Enabled && request.Action != HubAction.PinAllOff)
-            throw new InvalidOperationException("Activez d’abord cet outil.");
         _errors.Remove(tool);
         switch (request.Action)
         {
@@ -330,6 +313,12 @@ internal sealed class WindowsHub : IDisposable
                 return;
             throw new InvalidOperationException("Un sélecteur est déjà en cours d’ouverture.");
         }
+        if (_overlayTool == tool && _overlay is WindowSwitcher)
+        {
+            _overlay.Close();
+            return;
+        }
+        var foreground = HubWindows.Active;
         _overlay?.Close();
         _pendingSwitcher = tool;
         var revision = ++_switcherRevision;
@@ -339,8 +328,8 @@ internal sealed class WindowsHub : IDisposable
         {
             try
             {
-                var windows = await Task.Run(() => HubWindows.List(options.Exclusions)).WaitAsync(TimeSpan.FromSeconds(4));
-                if (!_disposed && revision == _switcherRevision && _preferences.Get(tool).Enabled)
+                var windows = await Task.Run(() => HubWindows.List(options.Exclusions, foreground)).WaitAsync(TimeSpan.FromSeconds(4));
+                if (!_disposed && revision == _switcherRevision)
                     ShowOverlay(tool, new WindowSwitcher(options, windows, message => _errors[tool] = message, selected));
             }
             catch (Exception error)
@@ -445,7 +434,7 @@ internal sealed class WindowsHub : IDisposable
         if (_disposed)
             return;
         var options = _preferences.Get(HubTool.Pin);
-        if (_taskbar is not null || _pins.Count > 0 || options.Enabled && options.PinRules.Length > 0)
+        if (_taskbar is not null || _pins.Count > 0 || options.PinRules.Length > 0)
         {
             _placement.Start();
             PlaceDecorations();
@@ -461,7 +450,7 @@ internal sealed class WindowsHub : IDisposable
             if (_taskbar is not null)
             {
                 var hwnd = HubWindows.Taskbar.ToInt64();
-                var bar = HubWindows.Bounds(hwnd);
+                var bar = HubWindows.TaskbarBounds(new(hwnd));
                 var style = _preferences.Get(HubTool.Taskbar);
                 var size = style.Size;
                 if (bar is { } bounds && HubWindows.IsVisible(hwnd) && Math.Min(bounds.Width, bounds.Height) >= size + 3 &&
@@ -471,10 +460,14 @@ internal sealed class WindowsHub : IDisposable
                 {
                     var screen = Screen.FromRectangle(bounds).Bounds;
                     var inset = Math.Min(style.Inset, (Math.Max(bounds.Width, bounds.Height) - 1) / 2);
-                    _taskbar.Place(bounds.Width >= bounds.Height
-                        ? new Rectangle(bounds.X + inset, bounds.Y <= screen.Top + 4 ? bounds.Bottom - size : bounds.Top, bounds.Width - 2 * inset, size)
-                        : new Rectangle(bounds.X <= screen.Left + 4 ? bounds.Right - size : bounds.Left, bounds.Y + inset, size, bounds.Height - 2 * inset),
-                        radius: style.Radius);
+                    var horizontal = bounds.Width >= bounds.Height;
+                    var insetArea = horizontal ? Rectangle.Inflate(bounds, -inset, 0) : Rectangle.Inflate(bounds, 0, -inset);
+                    var target = style.TaskbarEffect == TaskbarEffect.Accent
+                        ? horizontal
+                            ? new Rectangle(insetArea.X, bounds.Y <= screen.Top + 4 ? bounds.Bottom - size : bounds.Top, insetArea.Width, size)
+                            : new Rectangle(bounds.X <= screen.Left + 4 ? bounds.Right - size : bounds.Left, insetArea.Y, size, insetArea.Height)
+                        : insetArea;
+                    _taskbar.Place(target, border: style.TaskbarEffect == TaskbarEffect.Frame ? size : 0, radius: style.Radius);
                 }
                 else
                     _taskbar.Place(null);
@@ -482,7 +475,7 @@ internal sealed class WindowsHub : IDisposable
 
             var options = _preferences.Get(HubTool.Pin);
             _ruleSuppressed.RemoveWhere(handle => !HubWindows.Exists(handle));
-            if (options.Enabled && options.PinRules.Length > 0 && HubWindows.Describe(HubWindows.Active) is { } foreground &&
+            if (options.PinRules.Length > 0 && HubWindows.Describe(HubWindows.Active) is { } foreground &&
                 !_pins.ContainsKey(foreground.Handle) && !_ruleSuppressed.Contains(foreground.Handle) &&
                 HubWindows.Excluded(foreground.App, options.PinRules) && !HubWindows.Excluded(foreground.App, options.Exclusions) &&
                 !HubWindows.Topmost(foreground.Handle))
@@ -494,7 +487,7 @@ internal sealed class WindowsHub : IDisposable
                 else
                     entry.Border?.Place(HubWindows.Bounds(handle), options.Size);
 
-            if (_taskbar is null && _pins.Count == 0 && (!options.Enabled || options.PinRules.Length == 0))
+            if (_taskbar is null && _pins.Count == 0 && options.PinRules.Length == 0)
                 _placement.Stop();
         }
         catch (Exception error) { WindowsSettings.Log("Positionnement des surcouches.", error); }

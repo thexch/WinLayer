@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { ArrowDown, ArrowUp, Crosshair, Download, MousePointer2, Play, Plus, Square, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Crosshair, Download, Folder, LayoutGrid, Monitor, MousePointer2, Play, Plus, Search, Square, Trash2 } from 'lucide-react'
 import { Accent, Choice, Field, Flag, Hotkey, HubForm, NumberField, TabButtons, type RunHub } from './HubControls'
 import { defaultHubOptions, virtualKeys, type HubOptions, type HubPreferences, type HubStatus, type HubTool,
   type MacroPreset, type MacroStep } from './hub'
@@ -9,6 +9,7 @@ export interface HubPageProps {
   status: HubStatus
   run: RunHub
   busy: boolean
+  setProcessView?: (active: boolean) => void
 }
 
 function useOptions(tool: HubTool, data?: HubPreferences | null) {
@@ -21,28 +22,42 @@ function ToolFeedback({ status, tool }: { status: HubStatus; tool: HubTool }) {
 }
 
 export function TaskbarPage({ data, status, run, busy }: HubPageProps) {
-  const options = useOptions('taskbar', data)
+  const saved = useOptions('taskbar', data)
+  const options = { ...saved, taskbarEffect: saved.taskbarEffect ?? (saved.enabled ? 'accent' : 'windows') } as const
   const [name, setName] = useState('')
   return <>
     <ToolFeedback tool="taskbar" status={status} />
     <HubForm tool="taskbar" key={JSON.stringify(options)} options={options} run={run} busy={busy}
-      extra={<button type="button" className="button secondary" disabled={busy} onClick={() => { void run({
+      extra={<button type="button" className="button secondary" disabled={busy || options.taskbarEffect === 'windows'} onClick={() => { void run({
         tool: 'taskbar', action: 'configure', options: { ...defaultHubOptions('taskbar'), styles: options.styles },
-      }) }}>Restaurer</button>}>
+      }) }}>Revenir au style Windows</button>}>
       {(draft, patch) => <>
-        <div className="hub-taskbar-preview" role="img" aria-label="Aperçu de la surcouche"
-          style={{ '--bar-accent': draft.color, '--bar-opacity': draft.opacity / 100, '--bar-radius': draft.radius + 'px', '--bar-inset': draft.inset + 'px', '--bar-size': draft.size + 'px' } as CSSProperties}>
-          <div><span /><span /><span /><span /></div>
+        <Choice label="Effet sur la barre" value={draft.taskbarEffect ?? 'windows'}
+          choices={[[ 'windows', 'Style Windows' ], [ 'accent', 'Liseré' ], [ 'frame', 'Cadre' ], [ 'tint', 'Teinte' ]]}
+          onChange={taskbarEffect => patch({ taskbarEffect, opacity: taskbarEffect === 'tint' ? Math.min(draft.opacity, 35) : draft.opacity })} />
+        <div className="hub-taskbar-preview" role="img" aria-label="Aperçu de la barre des tâches"
+          data-effect={draft.taskbarEffect}
+          style={{ '--bar-accent': draft.color, '--bar-opacity': Math.min(draft.opacity, draft.taskbarEffect === 'tint' ? 35 : 100) / 100,
+            '--bar-radius': draft.radius + 'px', '--bar-inset': draft.inset + 'px', '--bar-size': draft.size + 'px' } as CSSProperties}>
+          <div className="hub-taskbar-sample">
+            <LayoutGrid size={16} /><Search size={16} /><Folder size={16} /><Monitor size={16} />
+            <span className="hub-taskbar-tray">⌃ &nbsp; 12:30</span>
+          </div>
         </div>
-        <p className="fine">Le liseré se superpose à la barre principale. Windows conserve sa propre disposition.</p>
-        <Accent options={draft} update={patch} />
-        <div className="hub-form-grid">
-          <NumberField label="Arrondi du liseré (px)" value={draft.radius} min={0} max={16} onChange={radius => patch({ radius })} />
-          <NumberField label="Retrait aux extrémités (px)" value={draft.inset} min={0} max={80} onChange={inset => patch({ inset })} />
-        </div>
+        {draft.taskbarEffect !== 'windows' && <>
+          <p className="fine">WinLayer dessine cet effet sur la barre principale. Clique sur Appliquer pour le voir sur ton bureau.</p>
+          <div className="hub-form-grid">
+            <Field label="Couleur"><input type="color" value={draft.color} onChange={event => patch({ color: event.currentTarget.value })} /></Field>
+            <NumberField label="Opacité (%)" value={draft.opacity} min={5} max={draft.taskbarEffect === 'tint' ? 35 : 100} onChange={opacity => patch({ opacity })} />
+            {draft.taskbarEffect !== 'tint' &&
+              <NumberField label="Épaisseur (px)" value={draft.size} min={1} max={24} onChange={size => patch({ size })} />}
+            <NumberField label="Arrondi (px)" value={draft.radius} min={0} max={16} onChange={radius => patch({ radius })} />
+            <NumberField label="Retrait aux extrémités (px)" value={draft.inset} min={0} max={80} onChange={inset => patch({ inset })} />
+          </div>
+        </>}
         <div className="hub-inline hub-saved">
           {draft.styles.map(style => <span key={style.name} className="hub-style">
-            <button type="button" className="button secondary" onClick={() => patch({ color: style.color, opacity: style.opacity, size: style.size, radius: style.radius, inset: style.inset, profile: style.name })}>{style.name}</button>
+            <button type="button" className="button secondary" onClick={() => patch({ color: style.color, opacity: style.opacity, size: style.size, radius: style.radius, inset: style.inset, taskbarEffect: style.effect ?? 'accent', profile: style.name })}>{style.name}</button>
             <button type="button" className="icon-button" aria-label={`Supprimer le style ${style.name}`}
               onClick={() => patch({ styles: draft.styles.filter(item => item.name !== style.name) })}><Trash2 size={16} /></button>
           </span>)}
@@ -52,7 +67,7 @@ export function TaskbarPage({ data, status, run, busy }: HubPageProps) {
           <button type="button" className="button secondary" disabled={!name.trim() || draft.styles.length >= 8}
             onClick={() => {
               patch({ styles: [...draft.styles.filter(style => style.name.toLowerCase() !== name.trim().toLowerCase()),
-                { name: name.trim(), color: draft.color, opacity: draft.opacity, size: draft.size, radius: draft.radius, inset: draft.inset }] })
+                { name: name.trim(), color: draft.color, opacity: draft.opacity, size: draft.size, radius: draft.radius, inset: draft.inset, effect: draft.taskbarEffect ?? 'windows' }] })
               setName('')
             }}><Plus size={16} aria-hidden="true" /> Mémoriser le style</button>
         </div>
@@ -66,20 +81,20 @@ export function SwitcherPage({ data, status, run, busy }: HubPageProps) {
   return <>
     <ToolFeedback tool="switcher" status={status} />
     <HubForm tool="switcher" key={JSON.stringify(options)} options={options} run={run} busy={busy}
-      extra={<button className="button primary" disabled={!options.enabled || busy} type="button"
+      extra={<button className="button primary" disabled={busy} type="button"
         onClick={() => { void run({ tool: 'switcher', action: 'open' }) }}>Ouvrir le sélecteur</button>}>
       {(draft, patch) => <>
         <Choice label="Disposition" value={draft.layout} choices={[['grid', 'Grille'], ['list', 'Liste'], ['cards', 'Cartes']]}
           onChange={layout => patch({ layout })} />
         <div className="hub-form-grid">
           <NumberField label="Largeur (px)" value={draft.width} min={420} max={1000} onChange={width => patch({ width })} />
-          <Field label="Couleur de l’aperçu"><input type="color" value={draft.color}
+          <Field label="Couleur d’accent"><input type="color" value={draft.color}
             onChange={event => patch({ color: event.currentTarget.value })} /></Field>
         </div>
         <Field label="Applications exclues"><input maxLength={512} placeholder="explorer, notepad" value={draft.exclusions}
           onChange={event => patch({ exclusions: event.currentTarget.value })} /></Field>
         <Hotkey label="Raccourci global" value={draft.shortcut} onChange={shortcut => patch({ shortcut })} />
-        <p className="fine">Alt+Tab reste disponible. Dans le sélecteur, utilisez les flèches, Entrée ou Échap.</p>
+        <p className="fine">Utilise les flèches ou Tab pour parcourir, Entrée pour ouvrir et Échap pour fermer. Alt+Tab de Windows reste disponible.</p>
       </>}
     </HubForm>
   </>
@@ -92,7 +107,7 @@ export function RepeaterPage({ data, status, run, busy }: HubPageProps) {
     <ToolFeedback tool="repeater" status={status} />
     {status.repeater.error && <p className="notice" role="alert">{status.repeater.error}</p>}
     <HubForm tool="repeater" key={JSON.stringify(options)} options={options} run={run} busy={busy} status={state}
-      extra={options.enabled && <button type="button" className="button secondary" disabled={busy}
+      extra={<button type="button" className="button secondary" disabled={busy}
         onClick={() => { void run({ tool: 'repeater', action: state === 'En pause' ? 'rearm' : 'stop' }) }}>
         {state === 'En pause' ? 'Réarmer' : 'Mettre en pause'}
       </button>}>
@@ -137,7 +152,7 @@ export function ScreenToolsPage(props: HubPageProps) {
     <TabButtons label="Outils d’écran" choices={[[ 'picker', 'Color Picker' ], [ 'ruler', 'Screen Ruler' ]]} active={tool} select={setTool} />
     <ToolFeedback tool={tool} status={status} />
     <HubForm tool={tool} key={`${tool}/${JSON.stringify(options)}`} options={options} run={run} busy={busy}
-      extra={<><button className="button primary" type="button" disabled={!options.enabled || busy}
+      extra={<><button className="button primary" type="button" disabled={busy}
         onClick={() => { void run({ tool, action: 'open' }) }}>
         <Crosshair size={17} aria-hidden="true" /> {tool === 'picker' ? 'Prélever' : 'Mesurer'}
       </button>
@@ -183,7 +198,7 @@ export function ScreenToolsPage(props: HubPageProps) {
       </dl>}
       <ul className="hub-swatches">
         {(shownPalette ? shown : [...new Set([...favorites, ...history])]).map(hex => <li key={hex}>
-          <button type="button" onClick={() => { void run({ tool, action: 'copyColor', value: hex }) }} disabled={busy || !options.enabled}
+          <button type="button" onClick={() => { void run({ tool, action: 'copyColor', value: hex }) }} disabled={busy}
             aria-label={`Copier ${hex}`} className="hub-swatch"><span style={{ backgroundColor: hex }} /><strong className="mono">{hex}</strong></button>
           <button type="button" className="button secondary" aria-pressed={favorites.includes(hex)}
             aria-label={`Favori ${hex}`} disabled={busy} onClick={() => { void run({ tool, action: 'color', value: hex }) }}>★</button>
@@ -259,7 +274,7 @@ export function MacroPage({ data, status, run, busy }: HubPageProps) {
     <HubForm tool="macro" key={JSON.stringify(options)} options={options} run={run} busy={busy}
       status={state ? { playing: 'Lecture', recording: 'Enregistrement', paused: 'En pause' }[state] : undefined}
       extra={<>
-        <button type="button" className="button primary" disabled={!options.enabled || busy || !!state}
+        <button type="button" className="button primary" disabled={busy || !!state}
           onClick={() => { void run({ tool: 'macro', action: 'open' }) }}><MousePointer2 size={16} aria-hidden="true" /> Enregistrer</button>
         {state && <button type="button" className="button secondary" disabled={busy}
           onClick={() => { void run({ tool: 'macro', action: 'stop' }) }}><Square size={16} aria-hidden="true" /> Arrêter</button>}
@@ -295,7 +310,7 @@ export function MacroPage({ data, status, run, busy }: HubPageProps) {
         {data.macros.map(value => <li key={value.name}>
           <button type="button" className="text-button" onClick={() => { setMacro(value); setSelected(0) }}>{value.name}</button>
           <div className="hub-inline">
-            <button className="icon-button" type="button" aria-label={`Lire ${value.name}`} disabled={busy || !options.enabled}
+            <button className="icon-button" type="button" aria-label={`Lire ${value.name}`} disabled={busy}
               onClick={() => { void run({ tool: 'macro', action: 'play', value: value.name }) }}><Play size={16} /></button>
             <button className="icon-button" type="button" aria-label={`Supprimer ${value.name}`} disabled={busy}
               onClick={() => { void run({ tool: 'macro', action: 'deleteMacro', value: value.name }) }}><Trash2 size={16} /></button>
@@ -335,7 +350,7 @@ export function MacroPage({ data, status, run, busy }: HubPageProps) {
         </button>
         <button type="button" className="button primary" disabled={busy || !validMacro(macro)}
           onClick={() => { void run({ tool: 'macro', action: 'saveMacro', macro }) }}>Enregistrer la macro</button>
-        <button type="button" className="button secondary" disabled={busy || !validMacro(macro) || !options.enabled}
+        <button type="button" className="button secondary" disabled={busy || !validMacro(macro)}
           onClick={() => { void run({ tool: 'macro', action: 'exportMacro', macro }) }}><Download size={16} aria-hidden="true" /> Exporter</button>
       </div>
     </section>
