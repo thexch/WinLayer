@@ -16,3 +16,5 @@
 
 - Pour le Windows Hub, réutiliser `GlobalHotkeys`, les primitives de fenêtre et d’automatisation, `HubMonitoring` et `HubRequest`. Vérifier les collisions avec Auto Clicker et garder la capture de macro explicite et confinée à la fenêtre dédiée. Décrire les compteurs absents et les effets de surcouche comme tels.
 - S’appuyer sur la matrice [Windows interactive](docs/DEVELOPMENT.md#validation-du-windows-hub) pour les changements de bureau et les automatismes. Distinguer les résultats du poste Windows des tests de compilation, de migration et de Chromium.
+
+- Pour les utilitaires WinLayer 4, enregistrer les nouvelles actions dans `src/WinLayer.Core/actions.json` et utiliser `GlobalHotkeys`. Couvrir les routes directes, les actions indisponibles, la persistance et les conflits. Conserver la reconnaissance et la conversion locales. Vérifier le parcours interactif sur Windows avant le tag stable.

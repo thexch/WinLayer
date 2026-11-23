@@ -4,6 +4,7 @@ import { send, type AgentStatus, type Command, type Page } from './bridge'
 export function useAgent() {
   const [status, setStatus] = useState<AgentStatus>()
   const view = useRef<Page | 'systemProcesses'>('dashboard')
+  const [requestedTarget, setRequestedTarget] = useState<{ id: string }>()
   const [page, setPage] = useState<Page>('dashboard')
   const [connection, setConnection] = useState<'opening' | 'connected' | 'offline'>('opening')
   const [feedback, setFeedback] = useState('')
@@ -19,6 +20,7 @@ export function useAgent() {
       if (revision.current !== null || !navigated.current) {
         view.current = next.requestedPage
         setPage(next.requestedPage)
+        setRequestedTarget(next.requestedTarget ? { id: next.requestedTarget } : undefined)
       }
       revision.current = next.navigationRevision
     }
@@ -85,6 +87,6 @@ export function useAgent() {
     if (!active.current) setFeedback('')
   }
 
-  return { status, page, connection, feedback, busy, downloadProgress, go, act,
+  return { status, page, requestedTarget, connection, feedback, busy, downloadProgress, go, act,
     setProcessView: (active: boolean) => { view.current = active ? 'systemProcesses' : 'system' } }
 }

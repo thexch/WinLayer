@@ -175,7 +175,7 @@ export function AutoClickerPage({ options, status, canEdit, onSave, onPause, onR
             </select>
           </label>
           <div>
-            <NumberSetting label="Vitesse (CPS)" value={options.cps} min={1} max={200} unit="CPS" onChange={(cps) => update({ cps })} />
+            <div id="clickerSpeed"><NumberSetting label="Vitesse (CPS)" value={options.cps} min={1} max={200} unit="CPS" onChange={(cps) => update({ cps })} /></div>
             <output className="fine mono" aria-label="Intervalle entre actions">{milliseconds.format(1000 / options.cps)} ms par action</output>
           </div>
           <label>Mode

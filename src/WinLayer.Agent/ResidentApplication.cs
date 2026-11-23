@@ -26,6 +26,7 @@ internal sealed class ResidentApplication : ApplicationContext
     private readonly WindowsAutoClicker _clicker;
     private readonly GlobalHotkeys _hotkeys = new();
     private readonly WindowsHub _hub;
+    private readonly WindowsUtilities _utilities;
     private readonly SemaphoreSlim _preferenceGate = new(1);
     private readonly Task _server;
     private readonly Task _autoCheck;
@@ -39,6 +40,7 @@ internal sealed class ResidentApplication : ApplicationContext
     private string? _error;
     private Page _notificationPage;
     private Page _requestedPage;
+    private string? _requestedTarget;
     private long _navigationRevision;
     private bool _quitting;
 
@@ -46,6 +48,7 @@ internal sealed class ResidentApplication : ApplicationContext
     {
         _clicker = new(_ui, _hotkeys);
         _hub = new(_hotkeys, _ui, SaveColorAsync);
+        _utilities = new(_hotkeys, _hub, OpenSettings, () => _preferences.Hub);
         _updateStatus = _updates.IsInstalled ? new(UpdateState.NotChecked) : new(UpdateState.Unavailable);
         _battery = new([() => new WindowsBluetoothProvider(), () => new WindowsHyperXProvider()],
             status => _ui.Post(_ => SetBatteryStatus(status), null),
@@ -64,6 +67,7 @@ internal sealed class ResidentApplication : ApplicationContext
         _menu.Items.Add("Ouvrir les paramètres", null, (_, _) => OpenSettings(Page.Dashboard));
         _menu.Items.Add("Device Battery", null, (_, _) => OpenSettings(Page.Battery));
         _menu.Items.Add("Auto Clicker", null, (_, _) => OpenSettings(Page.AutoClicker));
+        _menu.Items.Add("Palette de commandes", null, (_, _) => _utilities.Run("palette"));
         _menu.Items.Add("Screen Tools", null, (_, _) => OpenSettings(Page.Screen));
         _menu.Items.Add("System Tray Monitor", null, (_, _) => OpenSettings(Page.System));
         var pauseClicker = new ToolStripMenuItem("Mettre Auto Clicker en pause", null, (_, _) => _clicker.Pause());
@@ -91,10 +95,10 @@ internal sealed class ResidentApplication : ApplicationContext
             OpenSettings(page);
     }
 
-    private AgentStatus Snapshot() => new(_preferences, _batteryStatus, _updateStatus,
+    private AgentStatus Snapshot() => new(_preferences with { Undo = null }, _batteryStatus, _updateStatus,
         _updates.CurrentVersion?.ToString() ??
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0",
-        _error, _requestedPage, _navigationRevision, _clicker.Status, _hub.Snapshot());
+        _error, _requestedPage, _navigationRevision, _clicker.Status, _hub.Snapshot(), _utilities.Snapshot(_preferences.Undo?.FirstOrDefault()?.Label), _requestedTarget);
 
     private async Task ServeAsync()
     {
@@ -131,6 +135,7 @@ internal sealed class ResidentApplication : ApplicationContext
             }
 
             _hub.Initialize(_preferences.Hub ?? new());
+            _utilities.Initialize(_preferences.Utilities ?? new());
             await _battery.ApplyAsync(_preferences.Battery);
             while (!_stop.IsCancellationRequested)
             {
@@ -217,6 +222,8 @@ internal sealed class ResidentApplication : ApplicationContext
                         return new(Snapshot(), error.Message);
                     }
                     break;
+                case Command.Utility when request.Utility is { } utility && utility.IsValid():
+                    return await HandleUtilityAsync(utility);
                 case Command.Hub when request.Hub is { } hub && hub.IsValid():
                     return await HandleHubAsync(hub);
                 case Command.RefreshBattery:
@@ -287,13 +294,15 @@ internal sealed class ResidentApplication : ApplicationContext
         await _preferenceGate.WaitAsync(_stop.Token);
         try
         {
-            await SaveGeneralAsync(preferences with { AutoClicker = _preferences.AutoClicker, Hub = _preferences.Hub, Battery = preferences.Battery with { Enabled = true } });
+            await SaveGeneralAsync(preferences with { AutoClicker = _preferences.AutoClicker, Hub = _preferences.Hub, Utilities = _preferences.Utilities, Undo = _preferences.Undo, Battery = preferences.Battery with { Enabled = true } });
         }
         finally { _preferenceGate.Release(); }
     }
 
     private async Task SaveGeneralAsync(Preferences preferences)
     {
+        if (preferences.Appearance != _preferences.Appearance)
+            preferences = WithUndo(preferences, new("Apparence", Appearance: _preferences.Appearance));
         var startupChanged = preferences.StartWithWindows != _preferences.StartWithWindows;
         if (startupChanged || _error is not null)
             WindowsSettings.SetAutoStart(preferences.StartWithWindows);
@@ -312,6 +321,132 @@ internal sealed class ResidentApplication : ApplicationContext
         _error = null;
         await _battery.ApplyAsync(preferences.Battery);
         UpdateBatteryTray();
+    }
+
+    private static Preferences WithUndo(Preferences preferences, PreferenceUndo entry) => preferences with
+    {
+        Undo = new[] { entry }.Concat(preferences.Undo ?? []).Take(8).ToArray()
+    };
+
+    private async Task<Response> HandleUtilityAsync(UtilityRequest request)
+    {
+        try
+        {
+            if (request is { Action: UtilityAction.Execute, Id: "lock" } ||
+                request.Action == UtilityAction.Execute && LocalLauncher.IsId(request.Id!))
+                _ui.Post(_ => _utilities.Run(request.Id!), null);
+            else if (request.Action == UtilityAction.Execute)
+                await _utilities.ExecuteAsync(request.Id!);
+            else if (request.Action is UtilityAction.Export or UtilityAction.Import or UtilityAction.AddFile or UtilityAction.AddFolder)
+                _ui.Post(async _ => await ExchangeUtilitySettingsAsync(request.Action), null);
+            else
+                await SaveUtilitiesAsync(request.Options);
+            return new(Snapshot());
+        }
+        catch (InvalidOperationException error) { return new(Snapshot(), error.Message); }
+    }
+
+    private async Task ExchangeUtilitySettingsAsync(UtilityAction action)
+    {
+        try
+        {
+            if (_quitting) return;
+            var format = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true, MaxDepth = 8 };
+            if (action is UtilityAction.AddFile or UtilityAction.AddFolder)
+            {
+                var path = ChooseLauncherPath(action == UtilityAction.AddFolder);
+                if (path is null || _quitting) return;
+                var options = _preferences.Utilities ?? new();
+                if (options.Launchers.Length >= 12) throw new InvalidOperationException("Douze raccourcis locaux au maximum.");
+                var label = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
+                if (string.IsNullOrWhiteSpace(label)) label = path;
+                var launcher = new LocalLauncher("local:" + Guid.NewGuid().ToString("N"), label[..Math.Min(label.Length, 64)], path);
+                if (!launcher.IsValid()) throw new InvalidDataException("Choisissez un chemin absolu sur un lecteur local.");
+                await SaveUtilitiesAsync(options with { Launchers = [.. options.Launchers, launcher] });
+            }
+            else if (action == UtilityAction.Import)
+            {
+                using var dialog = new OpenFileDialog { Filter = "Profil WinLayer (*.json)|*.json" };
+                if (dialog.ShowDialog() != DialogResult.OK || _quitting) return;
+                using var input = new FileStream(dialog.FileName, FileMode.Open, FileAccess.Read, FileShare.Read);
+                var options = input.Length <= 32_768 ? await JsonSerializer.DeserializeAsync<UtilityOptions>(input, format, _stop.Token) : null;
+                if (options?.IsValid() != true) throw new InvalidDataException("Ce profil WinLayer est invalide.");
+                if (MessageBox.Show("Remplacer les réglages des utilitaires, les favoris et les thèmes par ce profil ?", "Restaurer un profil WinLayer",
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+                await SaveUtilitiesAsync(options);
+                Notify("WinLayer", "Profil restauré.", Page.Utilities);
+            }
+            else
+            {
+                using var dialog = new SaveFileDialog { Filter = "Profil WinLayer (*.json)|*.json", DefaultExt = "json", AddExtension = true };
+                if (dialog.ShowDialog() != DialogResult.OK || _quitting) return;
+                await File.WriteAllTextAsync(dialog.FileName, JsonSerializer.Serialize(_preferences.Utilities ?? new(), format), _stop.Token);
+            }
+        }
+        catch (Exception error)
+        {
+            if (_quitting) return;
+            WindowsSettings.Log("Profil WinLayer.", error);
+            Notify("Profil WinLayer", error is InvalidDataException or InvalidOperationException ? error.Message : "Impossible de lire ou d’écrire ce profil.", Page.Utilities);
+        }
+    }
+
+    private static string? ChooseLauncherPath(bool folder)
+    {
+        if (folder)
+        {
+            using var dialog = new FolderBrowserDialog { Description = "Ajouter un dossier à WinLayer", UseDescriptionForTitle = true };
+            return dialog.ShowDialog() == DialogResult.OK ? dialog.SelectedPath : null;
+        }
+
+        using var picker = new OpenFileDialog { Title = "Ajouter un fichier ou une application à WinLayer",
+            Filter = "Applications, documents et images|*.exe;*.txt;*.pdf;*.png;*.jpg;*.jpeg;*.bmp;*.webp",
+            DereferenceLinks = true };
+        return picker.ShowDialog() == DialogResult.OK ? picker.FileName : null;
+    }
+
+    private async Task SaveUtilitiesAsync(UtilityOptions? options)
+    {
+        await _preferenceGate.WaitAsync(_stop.Token);
+        try
+        {
+            var wanted = _preferences;
+            var tool = false;
+            if (options is not null)
+            {
+                wanted = WithUndo(wanted with { Utilities = options }, new("Outils, thèmes et favoris", Utilities: wanted.Utilities ?? new()));
+            }
+            else
+            {
+                var previous = _preferences.Undo?.FirstOrDefault() ?? throw new InvalidOperationException("Aucune modification à annuler.");
+                options = previous.Utilities;
+                wanted = wanted with { Undo = _preferences.Undo!.Skip(1).ToArray() };
+                if (options is not null) wanted = wanted with { Utilities = options };
+                if (previous.Appearance is { } appearance) wanted = wanted with { Appearance = appearance };
+                if (previous.Taskbar is { } taskbar)
+                {
+                    var hub = wanted.Hub ?? new();
+                    _hub.Reserve(HubTool.Taskbar, taskbar);
+                    tool = true;
+                    wanted = wanted with { Hub = hub with { Tools = new(hub.Tools) { [HubTool.Taskbar] = taskbar } } };
+                }
+            }
+            if (options is not null) _utilities.Reserve(options);
+            await _store.SaveAsync(wanted, _stop.Token);
+            if (_quitting) return;
+            _preferences = wanted;
+            if (options is not null) _utilities.Apply(options);
+            if (tool) _hub.Apply(HubTool.Taskbar, wanted.Hub!);
+        }
+        finally
+        {
+            if (!_quitting)
+            {
+                _utilities.Retain();
+                _hub.Retain(HubTool.Taskbar);
+            }
+            _preferenceGate.Release();
+        }
     }
 
     private async Task<Response> HandleHubAsync(HubRequest request)
@@ -363,6 +498,8 @@ internal sealed class ResidentApplication : ApplicationContext
             }
 
             var updated = _preferences with { Hub = hub };
+            if (request is { Action: HubAction.Configure, Tool: HubTool.Taskbar })
+                updated = WithUndo(updated, new("Taskbar Studio", Taskbar: (_preferences.Hub ?? new()).Get(HubTool.Taskbar)));
             await _store.SaveAsync(updated, _stop.Token);
             if (_quitting)
                 return;
@@ -560,7 +697,7 @@ internal sealed class ResidentApplication : ApplicationContext
         }
     }
 
-    private void OpenSettings(Page page)
+    private void OpenSettings(Page page, string? target = null)
     {
         if (_quitting || _updateStatus.State == UpdateState.Installing)
             return;
@@ -568,6 +705,7 @@ internal sealed class ResidentApplication : ApplicationContext
         try
         {
             _requestedPage = page;
+            _requestedTarget = target;
             _navigationRevision++;
             if (_settings is { HasExited: false })
                 return;
@@ -634,6 +772,7 @@ internal sealed class ResidentApplication : ApplicationContext
             return;
 
         _quitting = true;
+        _utilities.Dispose();
         _hub.Dispose();
         _clicker.Dispose();
         _hotkeys.Dispose();
@@ -663,6 +802,7 @@ internal sealed class ResidentApplication : ApplicationContext
         if (disposing)
         {
             _batteryTray?.Dispose();
+            _utilities.Dispose();
             _hub.Dispose();
             _clicker.Dispose();
             _hotkeys.Dispose();

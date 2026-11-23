@@ -41,6 +41,16 @@ public static class SettingsBridge
             return false;
 
         id = message.Id;
+        if (message.Action == "utility")
+        {
+            if (message is not { Preferences: null, Version: null, ClickerOptions: null, Hub: null, View: null, Utility: { } utility } ||
+                !utility.IsValid())
+                return false;
+            request = new(Command.Utility, Utility: utility);
+            return true;
+        }
+        if (message.Utility is not null)
+            return false;
         if (message.Action == "hub")
         {
             if (message is not { Preferences: null, Version: null, ClickerOptions: null, View: null, Hub: { } hub } || !hub.IsValid())
@@ -85,7 +95,7 @@ public static class SettingsBridge
 
     public static string WriteMacro(MacroPreset macro) => JsonSerializer.Serialize(macro, RequestFormat);
 
-    private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version, AutoClickerOptions? ClickerOptions, HubRequest? Hub, Page? View);
+    private sealed record Message(int Id, string Action, WebPreferences? Preferences, string? Version, AutoClickerOptions? ClickerOptions, HubRequest? Hub, Page? View, UtilityRequest? Utility);
 
     private sealed record WebPreferences(Appearance? Appearance, bool? StartWithWindows,
         bool? AutomaticUpdateChecks, WebBattery? Battery, bool? BatteryTrayIcons)

@@ -34,3 +34,9 @@ Les workflows restent vérifiés avec le skill GitHub Actions .NET. Les fichiers
 ## Windows Hub
 
 Les catalogues .NET, Anthropic, Vercel Labs, Next Level Builder et OpenAI ont été revérifiés. Les copies épinglées du dépôt couvrent les nouveaux outils avec les références officielles Windows. Aucun skill supplémentaire n’a été installé. Le skill P/Invoke a servi aux déclarations Win32 et au cycle de vie de PDH, HWND et DWM. Les recommandations .NET de performance ont servi à borner l’historique, limiter la collecte avancée et éviter les attentes actives. Les skills frontend et React ont orienté les surfaces de configuration, les graphiques denses et les regroupements. Playwright Test et axe couvrent l’intégration du bundle, les captures et l’accessibilité. Actionlint vérifie les workflows qui emballent et testent le paquet.
+
+## WinLayer 4
+
+Les copies épinglées couvrent l’extension. Les règles frontend et React orientent l’accueil, les interactions clavier et le dialogue de recherche. Les règles P/Invoke couvrent les structures Raw Input, l’inscription et le retrait du clavier, ainsi que l’intégration aux raccourcis existants. Les tests ciblés couvrent le catalogue, les opérations sérialisées, les profils, le clavier et les parcours de recherche. Les API de capture et d’image s’appuient sur les références Windows officielles.
+
+[Windows.Media.Ocr](https://learn.microsoft.com/uwp/api/windows.media.ocr.ocrengine) · [Windows Imaging Component](https://learn.microsoft.com/windows/win32/wic/-wic-about-windows-imaging-codec) · [Raw Input](https://learn.microsoft.com/windows/win32/inputdev/about-raw-input)

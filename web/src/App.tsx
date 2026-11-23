@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, BatteryCharging, BatteryLow, Bluetooth,
-  ChevronDown, CircleAlert, Crosshair, Cpu, Headphones, Layers, Pin, Radio, Workflow, ScanLine, LayoutGrid, Monitor, MousePointerClick, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon,
+  ChevronDown, CircleAlert, Crosshair, Cpu, Headphones, Layers, Pin, Radio, Workflow, ScanLine, LayoutGrid, Monitor, MousePointerClick, Power, RefreshCw, Settings2, SlidersHorizontal, Sun, Moon, Wrench, Star,
 } from 'lucide-react'
 import type { AgentStatus, Appearance, BatteryDevice, BatteryOptions, Page, Preferences } from './bridge'
 import { AutoClickerPage } from './AutoClickerPage'
@@ -11,6 +11,8 @@ import { NetworkPage, SystemPage } from './HubMonitor'
 import type { HubRequest } from './hub'
 import { Range, Switch } from './controls'
 import { useAgent } from './useAgent'
+import { ActionSearch, EntryIcon, ScreenUtilities, UtilitiesPage } from './UtilitiesPage'
+import { defaults, entries, luminance, type AppTheme, type Entry, type UtilityRequest } from './utility'
 import appIcon from '../../src/WinLayer.Agent/WinLayer.ico'
 
 const navigation = [
@@ -24,6 +26,7 @@ const navigation = [
   { id: 'pin', label: 'Always on Top', Icon: Pin },
   { id: 'network', label: 'Network Monitor', Icon: Radio },
   { id: 'system', label: 'System Tray Monitor', Icon: Cpu },
+  { id: 'utilities', label: 'Utilitaires', Icon: Wrench },
   { id: 'general', label: 'Général', Icon: Settings2 },
   { id: 'updates', label: 'Mises à jour', Icon: ArrowDownToLine },
 ] as const
@@ -60,16 +63,13 @@ function Brand() {
   </div>
 }
 
-function Sidebar({ selection, go, connection, version, skipToMain }: {
+function Sidebar({ selection, go, connection, version, search }: {
   selection: Page; go: (page: Page) => void; connection: ReturnType<typeof useAgent>['connection']; version?: string
-  skipToMain: () => void
+  search: ReactNode
 }) {
   return <aside className="sidebar">
     <Brand />
-    <a className="skip-link" href="#main-content" onClick={(event) => {
-      event.preventDefault()
-      skipToMain()
-    }}>Aller au contenu</a>
+    {search}
     <nav aria-label="Réglages">
       {navigation.map(({ id, label, Icon }) =>
         <button type="button" key={id} aria-label={label} aria-current={selection === id ? 'page' : undefined}
@@ -142,39 +142,60 @@ function GlassLayers() {
   </div>
 }
 
-function Dashboard({ status, go, opening }: { status?: AgentStatus; go: (page: Page) => void; opening: boolean }) {
-  const known = status?.battery.devices.filter((device) => device.state === 'available' && device.percentage !== null).length ?? 0
+function Dashboard({ status, go, choose, opening, favorites, canEdit }: {
+  status?: AgentStatus; go: (page: Page) => void; choose: (item: Entry) => void; opening: boolean; favorites: Entry[]; canEdit: boolean
+}) {
+  const sample = status?.hub?.metrics?.history.at(-1)
+  const percent = (value?: number | null) => value == null ? '—' : Math.round(value) + ' %'
+  const quick = ['ocr', 'color', 'shelf', 'switch']
   return <>
-    <Header title="Vue d’ensemble" description="Retrouvez vos batteries, l’état de WinLayer et vos réglages." />
-    <section className="signal-board" aria-labelledby="module-title">
+    <Header title="Vue d’ensemble" description="Vos outils, vos périphériques et l’activité de votre PC." />
+    <section className="signal-board home-board" aria-labelledby="module-title">
       <div className="signal-copy">
-        <Status tone={!status ? 'neutral' : status.battery.error ? 'warning' : 'positive'}>
-          {!status ? opening ? 'Connexion à l’agent…' : 'État indisponible' : status.battery.error ? 'Lecture indisponible' : 'Surveillance active'}
+        <Status tone={status ? 'positive' : 'neutral'}>
+          {status ? 'WinLayer est prêt' : opening ? 'Connexion à l’agent…' : 'Agent indisponible'}
         </Status>
-        <h2 id="module-title">Device Battery</h2>
-        <p>{known > 0 ? `${known} niveau${known > 1 ? 'x' : ''} de charge disponible${known > 1 ? 's' : ''}.` :
-          'Suivez la charge de vos périphériques compatibles.'}</p>
-        <button type="button" className="button hero-button" onClick={() => go('battery')}>
-          Voir les périphériques <ArrowRight size={17} aria-hidden="true" />
+        <h2 id="module-title">Votre bureau, à votre façon.</h2>
+        <p>Capturez, automatisez et personnalisez Windows depuis WinLayer.</p>
+        <button type="button" className="button hero-button" onClick={() => go('utilities')}>
+          Explorer les utilitaires <ArrowRight size={17} aria-hidden="true" />
         </button>
       </div>
       <GlassLayers />
     </section>
+    <div className="home-actions">
+      <section aria-labelledby="quick-actions">
+        <div className="section-heading"><h2 id="quick-actions">Actions rapides</h2></div>
+        <div className="home-launch-grid">{quick.flatMap(id => entries.filter(item => item.id === id)).map(item =>
+          <button type="button" className="home-launch" key={item.id} disabled={!canEdit} onClick={() => choose(item)}>
+            <span className="tile-icon"><EntryIcon entry={item} /></span><strong>{item.label}</strong><ArrowUpRight size={16} aria-hidden="true" />
+          </button>)}</div>
+      </section>
+      <section aria-labelledby="home-favorites">
+        <div className="section-heading"><h2 id="home-favorites">Favoris</h2><Star size={18} aria-hidden="true" /></div>
+        {favorites.length > 0 ? <div className="home-launch-grid">{favorites.map(item =>
+          <button type="button" className="home-launch" key={item.id} disabled={!item.page && !canEdit} onClick={() => choose(item)}>
+            <span className="tile-icon"><EntryIcon entry={item} /></span><strong>{item.label}</strong><ArrowUpRight size={16} aria-hidden="true" />
+          </button>)}</div> : <p className="fine home-empty">Sélectionnez l’étoile dans les résultats de recherche pour retrouver une action ici.</p>}
+      </section>
+    </div>
     <div className="overview-detail">
       <section aria-labelledby="overview-devices">
         <div className="section-heading"><h2 id="overview-devices">Périphériques</h2>
           {status?.battery.updatedAt && <time className="mono fine" dateTime={status.battery.updatedAt}>{readingTime.format(new Date(status.battery.updatedAt))}</time>}
         </div>
         <Readings status={status} limit={3} />
-        {(status?.battery.devices.length ?? 0) > 3 && <button type="button" className="text-button" onClick={() => go('battery')}>Voir tous les périphériques <ArrowRight size={16} /></button>}
+        <button type="button" className="text-button" onClick={() => go('battery')}>Voir les périphériques <ArrowRight size={16} aria-hidden="true" /></button>
       </section>
-      <section className="overview-preferences" aria-labelledby="overview-preferences">
-        <div className="section-heading"><h2 id="overview-preferences">Préférences système</h2>
-          <button type="button" className="icon-button" aria-label="Ouvrir les paramètres généraux" onClick={() => go('general')}><ArrowUpRight size={17} /></button>
+      <section className="overview-preferences" aria-labelledby="overview-system">
+        <div className="section-heading"><h2 id="overview-system">État du PC</h2>
+          <button type="button" className="icon-button" aria-label="Ouvrir System Tray Monitor" onClick={() => go('system')}><ArrowUpRight size={17} /></button>
         </div>
         <dl className="summary-list">
+          <div><dt><Cpu size={17} aria-hidden="true" /> Processeur</dt><dd>{percent(sample?.cpu)}</dd></div>
+          <div><dt><Monitor size={17} aria-hidden="true" /> Mémoire</dt><dd>{percent(sample?.ram)}</dd></div>
+          <div><dt><Radio size={17} aria-hidden="true" /> Réseau</dt><dd>{sample?.down == null ? '—' : `${(sample.down / 1024).toFixed(1)} Ko/s ↓`}</dd></div>
           <div><dt><Power size={17} aria-hidden="true" /> Démarrage avec Windows</dt><dd>{status ? status.preferences.startWithWindows ? 'Activé' : 'Désactivé' : '—'}</dd></div>
-          <div><dt><Monitor size={17} aria-hidden="true" /> Apparence</dt><dd>{status ? appearanceNames[status.preferences.appearance] : '—'}</dd></div>
         </dl>
       </section>
     </div>
@@ -190,9 +211,9 @@ function BatteryForm({ options, canEdit, onSave }: {
       <fieldset disabled={!canEdit}>
         <Range label="Intervalle de secours" min={2} max={60} unit="min" value={draft.refreshMinutes}
           onChange={(refreshMinutes) => setDraft({ ...draft, refreshMinutes })} />
-        <Switch label="Alerte de batterie faible" checked={draft.alerts} onChange={(alerts) => setDraft({ ...draft, alerts })} />
+        <div id="batteryAlert"><Switch label="Alerte de batterie faible" checked={draft.alerts} onChange={(alerts) => setDraft({ ...draft, alerts })} />
         {draft.alerts && <Range label="Seuil de l’alerte" min={5} max={50} unit="%" value={draft.lowThreshold}
-          onChange={(lowThreshold) => setDraft({ ...draft, lowThreshold })} />}
+          onChange={(lowThreshold) => setDraft({ ...draft, lowThreshold })} />}</div>
         <button className="button primary" disabled={!changed}>Enregistrer la configuration</button>
       </fieldset>
     </form>
@@ -280,19 +301,79 @@ function UpdatePage({ status, canEdit, onCheck, onInstall, downloading, progress
 }
 
 export function App() {
-  const { status, page, connection, feedback, busy, downloadProgress, go, act, setProcessView } = useAgent()
+  const { status, page, requestedTarget, connection, feedback, busy, downloadProgress, go, act, setProcessView } = useAgent()
   const [automation, setAutomation] = useState<'clicker' | 'repeater'>('clicker')
   const [preview, setPreview] = useState<Appearance>()
+  const [themePreview, setThemePreview] = useState<AppTheme>()
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [ignoredTarget, setIgnoredTarget] = useState<{ id: string }>()
+  const [localTarget, setLocalTarget] = useState<{ id: string }>()
   const main = useRef<HTMLElement>(null)
   const preferences = status?.preferences
   const options = preferences?.battery
+  const utilityOptions = preferences?.utilities ?? defaults
+  const utilityKey = JSON.stringify(utilityOptions)
+  const items = [...entries, ...(preferences?.hub?.macros ?? []).map(macro => ({
+    id: 'macro:' + macro.name, label: macro.name, category: 'Macro', keywords: 'jouer exécuter séquence', icon: 'macro', tool: 'macro',
+  })), ...utilityOptions.launchers.map(item => ({
+    id: item.id, label: item.label, category: 'Raccourcis locaux', keywords: 'ouvrir application fichier dossier', icon: 'folder', tool: 'local',
+  }))]
+  const favorites = utilityOptions.favorites.flatMap(id => items.find(item => item.id === id) ?? [])
+  const selectedTheme = utilityOptions.themes.find(theme => theme.name === utilityOptions.theme)
+  const theme = page === 'utilities' && themePreview ? themePreview : page === 'general' && preview ? undefined : selectedTheme
   const canEdit = connection === 'connected' && busy === null
   const appearance = page === 'general' && preview ? preview : preferences?.appearance ?? 'system'
 
-  useEffect(() => { document.documentElement.dataset.theme = appearance }, [appearance])
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.theme = theme ? luminance(theme.canvas) < .25 ? 'dark' : 'light' : appearance
+    const custom = theme ? {
+      '--canvas': theme.canvas, '--surface': theme.surface, '--ink': theme.ink, '--accent': theme.accent,
+      '--line': theme.border, '--focus': theme.accent, '--radius': theme.radius + 'px', '--density': theme.density / 100,
+      '--on-accent': luminance(theme.accent) > .179 ? '#000' : '#fff',
+      '--accent-deep': theme.accent, '--accent-tint': 'color-mix(in srgb, var(--accent) 16%, var(--surface))',
+      '--muted': 'color-mix(in srgb, var(--ink) 86%, var(--canvas))',
+      '--font-sans-custom': theme.font === 'Manrope' ? 'var(--font-sans)' : theme.font === 'Geist Mono' ? 'var(--font-mono)' : '"Segoe UI", sans-serif',
+      '--sidebar': theme.surface, '--sidebar-text': theme.ink, '--sidebar-bright': theme.ink,
+      '--sidebar-active': 'color-mix(in srgb, var(--accent) 18%, var(--surface))', '--sidebar-focus': theme.accent,
+    } : {}
+    Object.entries(custom).forEach(([key, value]) => root.style.setProperty(key, String(value)))
+    if (theme && !theme.motion) root.dataset.static = 'true'
+    return () => { Object.keys(custom).forEach(key => root.style.removeProperty(key)); delete root.dataset.static }
+  }, [appearance, theme])
+  useEffect(() => {
+    function shortcut(event: KeyboardEvent) {
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [])
+  useEffect(() => {
+    const target = localTarget ?? (ignoredTarget === requestedTarget ? undefined : requestedTarget)
+    if (!target) return
+    const frame = requestAnimationFrame(() => {
+      const node = document.getElementById(target.id)
+      if (!node) return
+      const disclosure = node.closest('details')
+      if (disclosure) disclosure.open = true
+      node.scrollIntoView({ block: 'center' })
+      const control = node.querySelector<HTMLElement>('input, button, select, summary, textarea')
+      if (control) control.focus({ preventScroll: true })
+      else { node.tabIndex = -1; node.focus({ preventScroll: true }) }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [page, localTarget, requestedTarget, ignoredTarget])
+  useEffect(() => {
+    setLocalTarget(undefined)
+    if (requestedTarget?.id === 'repeat') setAutomation('repeater')
+    if (requestedTarget?.id === 'clickerSpeed') setAutomation('clicker')
+  }, [requestedTarget])
   useEffect(() => { main.current?.scrollTo({ top: 0 }) }, [page])
 
-  function save({ autoClicker: _autoClicker, hub: _hub, ...next }: Preferences) {
+  function save({ autoClicker: _autoClicker, hub: _hub, utilities: _utilities, ...next }: Preferences) {
     void act({ action: 'save', preferences: next }, 'Enregistrement…', 'Préférences enregistrées.')
   }
 
@@ -303,22 +384,47 @@ export function App() {
 
   function navigate(next: Page) {
     setPreview(undefined)
+    setThemePreview(undefined)
+    setLocalTarget(undefined)
+    setIgnoredTarget(requestedTarget)
     go(next)
   }
 
+  function runUtility(utility: UtilityRequest) {
+    return act({ action: 'utility', utility }, 'Action en cours…', utility.action === 'save' ? 'Réglages enregistrés.' :
+      utility.action === 'undo' ? 'Dernière modification annulée.' : '')
+  }
+
+  function choose(item: Entry) {
+    if (item.page) {
+      navigate(item.page)
+      if (item.target === 'repeat' || item.target === 'clickerSpeed') setAutomation(item.target === 'repeat' ? 'repeater' : 'clicker')
+      setLocalTarget(item.target ? { id: item.target } : undefined)
+    } else if (canEdit) {
+      void runUtility({ action: 'execute', id: item.id })
+    }
+  }
+
+  function favorite(id: string) {
+    const existing = utilityOptions.favorites
+    const next = existing.includes(id) ? existing.filter(item => item !== id) : [...existing, id].slice(-16)
+    void runUtility({ action: 'save', options: { ...utilityOptions, favorites: next } })
+  }
+
   const hubPage = page in hubPages ? hubPages[page as keyof typeof hubPages] : undefined
-  const hubProps = status?.hub ? { status: status.hub, data: preferences?.hub, run: runHub, busy: !canEdit, setProcessView } : undefined
+  const hubProps = status?.hub ? { target: localTarget?.id ?? (ignoredTarget === requestedTarget ? undefined : requestedTarget?.id), status: status.hub, data: preferences?.hub, run: runHub, busy: !canEdit, setProcessView } : undefined
   const Module = hubPage?.[0]
 
   return <>
     <div className="shell">
       <Sidebar selection={page} go={navigate} connection={connection} version={status?.version}
-        skipToMain={() => main.current?.focus()} />
+        search={<ActionSearch open={searchOpen} setOpen={setSearchOpen} choose={choose} favorite={favorite}
+          canEdit={canEdit} items={items} options={utilityOptions} recent={status?.utilities?.recent ?? []} />} />
       <main id="main-content" ref={main} tabIndex={-1}>
         <div className="workspace">
           {connection === 'offline' && <div className="notice"><CircleAlert size={17} aria-hidden="true" /> L’agent est indisponible. Nouvelle tentative automatique.</div>}
           {status?.error && <div className="notice"><CircleAlert size={17} aria-hidden="true" /> {status.error}</div>}
-          {page === 'dashboard' && <Dashboard status={status} go={navigate} opening={connection === 'opening'} />}
+          {page === 'dashboard' && <Dashboard status={status} go={navigate} choose={choose} canEdit={canEdit} favorites={favorites} opening={connection === 'opening'} />}
           {page === 'battery' && <>
             <Header title="Périphériques" description="Retrouvez les niveaux de charge transmis à Windows.">
               <button type="button" className={`button secondary ${busy === 'refreshBattery' ? 'refreshing' : ''}`}
@@ -336,10 +442,10 @@ export function App() {
               </section>
               <section aria-labelledby="battery-options" className="battery-panel">
                 <div className="section-heading"><h2 id="battery-options">Device Battery</h2><BatteryLow size={20} aria-hidden="true" /></div>
-                <Switch label="Bandeau batterie dans la barre des tâches" checked={preferences?.batteryTrayIcons ?? true}
+                <div id="batteryTray"><Switch label="Bandeau batterie dans la barre des tâches" checked={preferences?.batteryTrayIcons ?? true}
                   description="Affiche les pictogrammes et les pourcentages à gauche de la zone de notification."
                   disabled={!canEdit || !options}
-                  onChange={(batteryTrayIcons) => { if (preferences) save({ ...preferences, batteryTrayIcons }) }} />
+                  onChange={(batteryTrayIcons) => { if (preferences) save({ ...preferences, batteryTrayIcons }) }} /></div>
                 {options && <details className="settings-disclosure">
                   <summary><SlidersHorizontal size={18} aria-hidden="true" /> Configurer la lecture <ChevronDown size={18} aria-hidden="true" /></summary>
                   <BatteryForm key={JSON.stringify(options)} options={options} canEdit={canEdit}
@@ -353,7 +459,7 @@ export function App() {
               description={automation === 'clicker' ? 'Automatisez vos clics avec un raccourci global.' : 'Répétez une touche ou une combinaison.'} />
             <TabButtons label="Automatisation" choices={[[ 'clicker', 'Auto Clicker' ], [ 'repeater', 'Key Repeater' ]]}
               active={automation} select={setAutomation} />
-            {automation === 'repeater' ? (hubProps && <RepeaterPage {...hubProps} />) :
+            {automation === 'repeater' ? (hubProps && <div id="repeat"><RepeaterPage {...hubProps} /></div>) :
               preferences?.autoClicker && status?.autoClicker ?
               <AutoClickerPage options={preferences.autoClicker} status={status.autoClicker} canEdit={canEdit}
                 onSave={(clickerOptions) => { void act({ action: 'saveAutoClicker', clickerOptions }, 'Enregistrement…', 'Configuration enregistrée.') }}
@@ -364,6 +470,13 @@ export function App() {
           {hubPage && <>
             <Header title={hubPage[1]} description={hubPage[2]} />
             {Module && hubProps ? <Module {...hubProps} /> : <p className="fine">En attente de l’agent WinLayer.</p>}
+          </>}
+          {page === 'screen' && <ScreenUtilities key={utilityKey} options={utilityOptions} canEdit={canEdit} run={runUtility} />}
+          {page === 'utilities' && <>
+            <Header title="Utilitaires" description="Lancez vos outils et personnalisez les raccourcis de votre bureau." />
+            {status?.utilities?.error && <p className="notice" role="status">{status.utilities.error}</p>}
+            <UtilitiesPage key={utilityKey} options={utilityOptions} items={items} canEdit={canEdit}
+              undo={status?.utilities?.undo} run={runUtility} preview={setThemePreview} />
           </>}
           {page === 'general' && <>
             <Header title="Général" description="Personnalisez l’apparence et le démarrage de WinLayer." />

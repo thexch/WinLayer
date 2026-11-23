@@ -263,6 +263,7 @@ internal sealed class SettingsWindow : Form
     }
 
     private static bool RequestsOverlay(Request request) =>
+        request.Utility is { Action: UtilityAction.Execute or UtilityAction.Export or UtilityAction.Import or UtilityAction.AddFile or UtilityAction.AddFolder } ||
         request.Hub is { Action: HubAction.Play } or
             { Action: HubAction.Open, Tool: HubTool.Switcher or HubTool.Picker or HubTool.Ruler or HubTool.Macro };
 

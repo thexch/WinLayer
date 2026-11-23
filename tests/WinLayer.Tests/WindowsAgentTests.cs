@@ -83,6 +83,7 @@ public sealed class WindowsAgentTests
             Assert.AreEqual(0, settings.ExitCode);
             await VerifyAutoClickerWhileSettingsClosedAsync(timeout.Token);
             await VerifyHubWhileSettingsClosedAsync(timeout.Token);
+            await VerifyUtilitiesWhileSettingsClosedAsync(timeout.Token);
             var afterClosing = await LocalProtocol.SendAsync(new(Command.Status), timeout.Token);
             Assert.AreEqual(version, afterClosing.Status?.Version);
             Assert.IsFalse(agent.HasExited);
@@ -97,6 +98,7 @@ public sealed class WindowsAgentTests
             Assert.IsNull(quit.Error);
             await agent.WaitForExitAsync(timeout.Token);
             Assert.AreEqual(0, agent.ExitCode);
+            Assert.IsTrue(CanRegister(new UtilityOptions().Ocr));
         }
         finally
         {
@@ -114,6 +116,33 @@ public sealed class WindowsAgentTests
                 }
             }
         }
+    }
+
+    private static async Task VerifyUtilitiesWhileSettingsClosedAsync(CancellationToken stop)
+    {
+        Task<Response> Send(UtilityRequest request) => LocalProtocol.SendAsync(new(Command.Utility, Utility: request), stop);
+        var original = new UtilityOptions();
+        Assert.IsFalse(CanRegister(original.Ocr));
+        var conflict = await Send(new(UtilityAction.Save, Options: original with { Ocr = HubOptions.Default(HubTool.Picker).Shortcut }));
+        Assert.IsNotNull(conflict.Error);
+        Assert.IsFalse(CanRegister(original.Ocr));
+        var updated = original with { Ocr = new ClickShortcut(0x84, 3), Favorites = ["ocr", "shelf"] };
+        var saved = await Send(new(UtilityAction.Save, Options: updated));
+        Assert.IsNull(saved.Error);
+        CollectionAssert.AreEqual(updated.Favorites, saved.Status?.Preferences.Utilities?.Favorites);
+        Assert.IsTrue(CanRegister(original.Ocr));
+        Assert.IsFalse(CanRegister(updated.Ocr));
+        var restored = await Send(new(UtilityAction.Undo));
+        Assert.IsNull(restored.Error);
+        Assert.AreEqual(original.Ocr, restored.Status?.Preferences.Utilities?.Ocr);
+        Assert.IsFalse(CanRegister(original.Ocr));
+        Assert.IsTrue(CanRegister(updated.Ocr));
+        var shown = await Send(new(UtilityAction.Execute, "shelf"));
+        Assert.IsNull(shown.Error);
+        Assert.AreNotEqual(IntPtr.Zero, FindWindowW(null, "Drop Shelf — WinLayer"));
+        var hidden = await Send(new(UtilityAction.Execute, "shelf"));
+        Assert.IsNull(hidden.Error);
+        Assert.AreEqual(IntPtr.Zero, FindWindowW(null, "Drop Shelf — WinLayer"));
     }
 
     private static async Task VerifyHubWhileSettingsClosedAsync(CancellationToken stop)

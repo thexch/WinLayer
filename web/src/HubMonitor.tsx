@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowUpFromLine, Cpu, HardDrive, MemoryStick, Radio, RefreshCw } from 'lucide-react'
 import { Choice, Field, Flag, HubForm, NumberField, TabButtons } from './HubControls'
 import { defaultHubOptions, type HubMetrics, type HubOptions, type HubProcess, type HubSample } from './hub'
@@ -184,7 +184,7 @@ function Hardware({ metrics, view, history }: { metrics?: HubMetrics | null; vie
   ] as const
   const wanted = identity.filter(item => view === 'summary' || item.key === view)
   const active = view === 'cpu' || view === 'summary'
-  return <section className="hub-panel hub-monitor-panel">
+  return <section className="hub-panel hub-monitor-panel" id={view === 'cpu' ? 'cpu' : undefined}>
     <div className="hub-panel-heading"><h2>{systemViews.find(([key]) => key === view)?.[1]}</h2><span className="fine">{metrics ? 'Compteurs Windows' : 'Collecte indisponible'}</span></div>
     {wanted.length > 0 && <>
       <div className="hub-system-values">
@@ -226,8 +226,9 @@ function Hardware({ metrics, view, history }: { metrics?: HubMetrics | null; vie
   </section>
 }
 
-export function SystemPage({ status, data, run, busy, setProcessView }: HubPageProps) {
-  const [view, setView] = useState<SystemView>('summary')
+export function SystemPage({ status, data, run, busy, setProcessView, target }: HubPageProps) {
+  const [view, setView] = useState<SystemView>(target === 'cpu' ? 'cpu' : 'summary')
+  useEffect(() => { if (target === 'cpu') { setView('cpu'); setProcessView?.(false) } }, [target])
   const options = data?.tools.system ?? defaultHubOptions('system')
   const optionsNetwork = data?.tools.network ?? defaultHubOptions('network')
   const metrics = status.metrics

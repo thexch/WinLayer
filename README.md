@@ -32,3 +32,14 @@ Les outils sont disponibles dès le démarrage de l’agent. Le monitoring colle
 ## Contribuer
 
 [Architecture](docs/ARCHITECTURE.md) · [Design V2](docs/DESIGN.md) · [Développement et mesures](docs/DEVELOPMENT.md) · [Modules](docs/MODULES.md) · [Installation et releases](docs/RELEASING.md) · [Skills Codex](docs/SKILLS.md)
+
+## WinLayer 4
+
+La vue d’ensemble présente les actions rapides, les favoris, les batteries et l’état du PC. **Ctrl+K** ouvre la recherche dans les réglages. Depuis Windows, **Ctrl+Maj+P** ouvre la palette de commandes et **Ctrl+Maj+R** le menu radial. Les raccourcis sont modifiables dans **Utilitaires**.
+
+- **Screen OCR** extrait le texte d’une zone avec le moteur Windows. Installer la reconnaissance optique dans les options de langue de Windows pour le français ou l’anglais. L’historique est facultatif.
+- **Screen Pin** affiche une capture dans une fenêtre flottante et **Drop Shelf** conserve temporairement les éléments glissés.
+- **Image Converter** exporte des lots en PNG, JPEG ou BMP, et en WebP si Windows expose un encodeur. Les sources sont conservées et les métadonnées retirées des exports.
+- **Coins actifs**, **Indicateurs clavier** et **App Themes** se règlent dans **Utilitaires**. Le panier s’ouvre par raccourci ou par action et stocke les éléments en mémoire jusqu’à expiration ou à la fermeture de l’agent.
+
+Utiliser **Restaurer** dans les utilitaires pour exporter un profil et annuler un changement réversible. La [matrice de validation Windows 11](docs/DEVELOPMENT.md#validation-interactive-de-winlayer-4) décrit les essais DPI, multi-écrans, capture et migration.

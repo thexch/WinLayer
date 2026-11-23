@@ -93,12 +93,12 @@ export function HubForm({ tool, options, run, busy, children, extra, status }: {
   </div>
 }
 
-export function Accent({ options, update, size = true }: {
-  options: HubOptions; update: (patch: Partial<HubOptions>) => void; size?: boolean
+export function Accent({ options, update, size = true, opacityId }: {
+  options: HubOptions; update: (patch: Partial<HubOptions>) => void; size?: boolean; opacityId?: string
 }) {
   return <div className="hub-form-grid">
     <Field label="Couleur"><input type="color" value={options.color} onChange={event => update({ color: event.currentTarget.value.toUpperCase() })} /></Field>
-    <NumberField label="Opacité (%)" value={options.opacity} min={5} max={100} onChange={opacity => update({ opacity })} />
+    <div id={opacityId}><NumberField label="Opacité (%)" value={options.opacity} min={5} max={100} onChange={opacity => update({ opacity })} /></div>
     {size && <NumberField label="Épaisseur (px)" value={options.size} min={1} max={24} onChange={size => update({ size })} />}
   </div>
 }

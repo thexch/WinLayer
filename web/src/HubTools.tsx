@@ -5,6 +5,7 @@ import { defaultHubOptions, virtualKeys, type HubOptions, type HubPreferences, t
   type MacroPreset, type MacroStep } from './hub'
 
 export interface HubPageProps {
+  target?: string
   data?: HubPreferences | null
   status: HubStatus
   run: RunHub
@@ -21,7 +22,7 @@ function ToolFeedback({ status, tool }: { status: HubStatus; tool: HubTool }) {
   return error && <p className="notice" role="alert">{error}</p>
 }
 
-export function TaskbarPage({ data, status, run, busy }: HubPageProps) {
+export function TaskbarPage({ data, status, run, busy, target }: HubPageProps) {
   const saved = useOptions('taskbar', data)
   const options = { ...saved, taskbarEffect: saved.taskbarEffect ?? (saved.enabled ? 'accent' : 'windows') } as const
   const [name, setName] = useState('')
@@ -44,11 +45,11 @@ export function TaskbarPage({ data, status, run, busy }: HubPageProps) {
             <span className="hub-taskbar-tray">⌃ &nbsp; 12:30</span>
           </div>
         </div>
-        {draft.taskbarEffect !== 'windows' && <>
+        {(draft.taskbarEffect !== 'windows' || target === 'taskbarOpacity') && <>
           <p className="fine">WinLayer dessine cet effet sur la barre principale. Clique sur Appliquer pour le voir sur ton bureau.</p>
           <div className="hub-form-grid">
             <Field label="Couleur"><input type="color" value={draft.color} onChange={event => patch({ color: event.currentTarget.value })} /></Field>
-            <NumberField label="Opacité (%)" value={draft.opacity} min={5} max={draft.taskbarEffect === 'tint' ? 35 : 100} onChange={opacity => patch({ opacity })} />
+            <div id="taskbarOpacity"><NumberField label="Opacité (%)" value={draft.opacity} min={5} max={draft.taskbarEffect === 'tint' ? 35 : 100} onChange={opacity => patch({ opacity, taskbarEffect: draft.taskbarEffect === 'windows' ? 'accent' : draft.taskbarEffect })} /></div>
             {draft.taskbarEffect !== 'tint' &&
               <NumberField label="Épaisseur (px)" value={draft.size} min={1} max={24} onChange={size => patch({ size })} />}
             <NumberField label="Arrondi (px)" value={draft.radius} min={0} max={16} onChange={radius => patch({ radius })} />
@@ -208,7 +209,7 @@ export function ScreenToolsPage(props: HubPageProps) {
   </>
 }
 
-export function PinPage({ data, status, run, busy }: HubPageProps) {
+export function PinPage({ data, status, run, busy, target }: HubPageProps) {
   const options = useOptions('pin', data)
   return <>
     <ToolFeedback tool="pin" status={status} />
@@ -219,7 +220,7 @@ export function PinPage({ data, status, run, busy }: HubPageProps) {
         <Hotkey label="Épingler / désépingler la fenêtre active" value={draft.shortcut} onChange={shortcut => patch({ shortcut })} />
         <Flag label="Afficher un contour autour des fenêtres épinglées" value={draft.indicator}
           onChange={indicator => patch({ indicator })} />
-        {draft.indicator && <Accent options={draft} update={patch} />}
+        {(draft.indicator || target === 'pinOpacity') && <Accent options={draft} update={value => patch({ indicator: true, ...value })} opacityId="pinOpacity" />}
         <Field label="Applications exclues"><input value={draft.exclusions} maxLength={512}
           onChange={event => patch({ exclusions: event.currentTarget.value })} /></Field>
         <Field label="Épingler automatiquement au premier plan"><input placeholder="notepad, calculator" value={draft.pinRules} maxLength={512}

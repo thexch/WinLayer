@@ -1,7 +1,8 @@
+import type { UtilityOptions, UtilityRequest } from './utility'
 import type { HubPreferences, HubRequest, HubStatus } from './hub'
 
 // This web contract is distinct from the resident agent's V1 named-pipe format.
-export type Page = 'dashboard' | 'battery' | 'general' | 'updates' | 'autoClicker' | 'taskbar' | 'switcher' | 'macro' | 'screen' | 'network' | 'system' | 'pin'
+export type Page = 'dashboard' | 'battery' | 'general' | 'updates' | 'autoClicker' | 'taskbar' | 'switcher' | 'macro' | 'screen' | 'network' | 'system' | 'pin' | 'utilities'
 export type Appearance = 'system' | 'light' | 'dark'
 
 export interface BatteryOptions {
@@ -41,6 +42,7 @@ export interface Preferences {
   battery: BatteryOptions
   autoClicker?: AutoClickerOptions
   hub?: HubPreferences | null
+  utilities?: UtilityOptions | null
 }
 
 export interface BatteryDevice {
@@ -65,6 +67,8 @@ export interface AgentStatus {
   navigationRevision: number
   autoClicker?: AutoClickerStatus
   hub?: HubStatus
+  utilities?: { undo: string | null; error: string | null; recent: string[] }
+  requestedTarget?: string | null
 }
 
 export type Command =
@@ -74,6 +78,7 @@ export type Command =
   | { action: 'save'; preferences: Preferences }
   | { action: 'installUpdate'; version: string }
   | { action: 'hub'; hub: HubRequest }
+  | { action: 'utility'; utility: UtilityRequest }
 
 export interface Response {
   status: AgentStatus | null

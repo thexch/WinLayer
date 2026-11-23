@@ -132,10 +132,13 @@ internal sealed partial class TaskbarBatteryStrip : NativeWindow, IDisposable
     {
         using var scratch = new Bitmap(1, 1);
         using var measure = Graphics.FromImage(scratch);
-        using var font = new Font("Segoe UI", 12 * scale, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var variable = new Font("Segoe UI Variable Text", 13 * scale, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var fallback = variable.Name.StartsWith("Segoe UI", StringComparison.OrdinalIgnoreCase)
+            ? null : new Font("Segoe UI", 13 * scale, FontStyle.Regular, GraphicsUnit.Pixel);
+        var font = fallback ?? variable;
         using var format = (StringFormat)StringFormat.GenericTypographic.Clone();
         var inset = (int)Math.Ceiling(5 * scale);
-        var glyphSize = (int)Math.Ceiling(13 * scale);
+        var glyphSize = (int)Math.Round(16 * scale);
         var gap = (int)Math.Ceiling(5 * scale);
         var spacing = (int)Math.Ceiling(11 * scale);
         var width = inset;
@@ -161,11 +164,20 @@ internal sealed partial class TaskbarBatteryStrip : NativeWindow, IDisposable
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         using var ink = new SolidBrush(foreground);
-        var textTop = (height - font.GetHeight(graphics)) / 2;
+        var textTop = MathF.Round((height - font.GetHeight(graphics)) / 2);
+        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        graphics.PixelOffsetMode = PixelOffsetMode.Half;
         foreach (var row in rows)
         {
-            var symbolTop = (height - glyphSize) / 2f;
-            DrawGlyph(graphics, new(row.X, symbolTop, glyphSize, glyphSize), foreground, row.Device.Glyph);
+            const int samples = 3;
+            using var icon = new Bitmap(glyphSize * samples, glyphSize * samples, PixelFormat.Format32bppPArgb);
+            using (var drawing = Graphics.FromImage(icon))
+            {
+                drawing.SmoothingMode = SmoothingMode.AntiAlias;
+                DrawGlyph(drawing, new(0, 0, icon.Width, icon.Height), foreground, row.Device.Glyph);
+            }
+            graphics.DrawImage(icon, new Rectangle(row.X, (height - glyphSize) / 2, glyphSize, glyphSize),
+                0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel);
             graphics.DrawString(row.Percent, font, ink, new PointF(row.X + glyphSize + gap, textTop), format);
         }
 
@@ -177,21 +189,30 @@ internal sealed partial class TaskbarBatteryStrip : NativeWindow, IDisposable
         var save = graphics.Save();
         graphics.TranslateTransform(bounds.X, bounds.Y);
         graphics.ScaleTransform(bounds.Width / 13, bounds.Height / 13);
-        using var pen = new Pen(foreground, 1.15f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+        using var pen = new Pen(foreground, 1.05f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         switch (glyph)
         {
             case BatteryTrayGlyph.Headset:
-                graphics.DrawArc(pen, 1, 1, 11, 10, 180, 180);
-                graphics.DrawRectangle(pen, 1, 6, 2.5f, 5);
-                graphics.DrawRectangle(pen, 9.5f, 6, 2.5f, 5);
+                graphics.DrawArc(pen, 1.7f, 1.8f, 9.6f, 9, 180, 180);
+                graphics.DrawRoundedRectangle(pen, new RectangleF(1.7f, 6.1f, 2.5f, 4.9f), new SizeF(0.9f, 0.9f));
+                graphics.DrawRoundedRectangle(pen, new RectangleF(8.8f, 6.1f, 2.5f, 4.9f), new SizeF(0.9f, 0.9f));
                 break;
             case BatteryTrayGlyph.Mouse:
                 graphics.DrawEllipse(pen, 3, 0.8f, 7, 11.4f);
                 graphics.DrawLine(pen, 6.5f, 3, 6.5f, 5);
                 break;
             case BatteryTrayGlyph.Gamepad:
-                graphics.DrawPolygon(pen, [new PointF(3, 3.5f), new(10, 3.5f), new(12, 9), new(10, 10.5f),
-                    new(8, 8.5f), new(5, 8.5f), new(3, 10.5f), new(1, 9)]);
+                using (var outline = new GraphicsPath())
+                {
+                    outline.AddLine(4.2f, 3.6f, 8.8f, 3.6f);
+                    outline.AddBezier(8.8f, 3.6f, 10.5f, 3.6f, 10.9f, 5, 11.6f, 8.1f);
+                    outline.AddBezier(11.6f, 8.1f, 12.1f, 10.9f, 9.9f, 10.8f, 8.3f, 8.6f);
+                    outline.AddLine(8.3f, 8.6f, 4.7f, 8.6f);
+                    outline.AddBezier(4.7f, 8.6f, 3.1f, 10.8f, 0.9f, 10.9f, 1.4f, 8.1f);
+                    outline.AddBezier(1.4f, 8.1f, 2.1f, 5, 2.5f, 3.6f, 4.2f, 3.6f);
+                    outline.CloseFigure();
+                    graphics.DrawPath(pen, outline);
+                }
                 graphics.DrawLine(pen, 3, 6.5f, 5, 6.5f);
                 graphics.DrawLine(pen, 4, 5.5f, 4, 7.5f);
                 graphics.DrawLine(pen, 9, 6, 9.6f, 6);

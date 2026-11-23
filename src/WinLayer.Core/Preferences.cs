@@ -29,12 +29,17 @@ public sealed record Preferences
     public AutoClickerOptions AutoClicker { get; init; } = new();
 
     public HubPreferences? Hub { get; init; }
+    public UtilityOptions? Utilities { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PreferenceUndo[]? Undo { get; init; }
 
     public Preferences Normalize() => this with
     {
         Appearance = Enum.IsDefined(Appearance) ? Appearance : Appearance.System,
         Battery = (Battery ?? new()).Normalize(),
         Hub = Hub?.Normalize(),
+        Utilities = Utilities?.IsValid() == true ? Utilities : null,
+        Undo = Undo?.Where(entry => entry?.IsValid() == true).Take(8).ToArray(),
         AutoClicker = AutoClicker is { } options && options.IsValid() ? options : new()
     };
 }

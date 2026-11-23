@@ -48,6 +48,10 @@ async function withAgent(page: Page, fixture: AgentStatus, holdFirstStatus = fal
           if (agent.rejectSave) error = 'L’enregistrement a échoué.'
           else agent.status.preferences = command.preferences
         }
+        if (command.action === 'utility' && command.utility.action === 'save') {
+          agent.status.preferences.utilities = command.utility.options
+          agent.status.utilities = { undo: 'Outils et favoris', error: null, recent: [] }
+        }
         if (command.action === 'saveAutoClicker') {
           if (command.clickerOptions.shortcut.key === 119) error = 'Le raccourci F8 est indisponible.'
           else {
@@ -116,23 +120,60 @@ async function capture(page: Page, name: string) {
 
 const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Réglages' })
 
-test('keyboard skip link clears the brand and moves focus to the content', async ({ page }) => {
+test('keyboard opens WinLayer search without an overlay on the brand', async ({ page }) => {
   await withAgent(page, status)
-  const shortcut = page.getByRole('link', { name: 'Aller au contenu' })
-  const brand = page.locator('.brand')
-  await expect(shortcut).toHaveCSS('clip-path', 'inset(50%)')
-  await expect.poll(() => brand.locator('img').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
-
+  await expect(page.getByText('Aller au contenu')).toHaveCount(0)
   await page.keyboard.press('Tab')
-  await expect(shortcut).toBeFocused()
-  const brandBounds = await brand.boundingBox()
-  const shortcutBounds = await shortcut.boundingBox()
-  expect(brandBounds).not.toBeNull()
-  expect(shortcutBounds!.y).toBeGreaterThanOrEqual(brandBounds!.y + brandBounds!.height)
-
+  const search = page.getByRole('complementary').getByRole('button', { name: 'Rechercher', exact: true })
+  await expect(search).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('main')).toBeFocused()
-  await expect(shortcut).toHaveCSS('clip-path', 'inset(50%)')
+  await expect(page.getByRole('textbox', { name: 'Chercher une action ou un réglage' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(search).toBeFocused()
+})
+
+test('overview, fuzzy search, direct settings navigation and favorites share the same actions', async ({ page }) => {
+  await withAgent(page, status)
+  await expect(page.getByRole('heading', { name: 'Actions rapides' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'État du PC' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Device Battery' })).toHaveCount(0)
+  await capture(page, 'overview-hub.png')
+  await page.keyboard.press('Control+k')
+  const search = page.getByRole('textbox', { name: 'Chercher une action ou un réglage' })
+  await search.fill('batteri')
+  await expect(page.getByRole('button', { name: /^Device Battery/ })).toBeVisible()
+  await search.fill('seuil batterie faible')
+  await page.getByRole('button', { name: 'Favori : Seuil de batterie faible' }).click()
+  await expect(page.getByRole('button', { name: 'Favori : Seuil de batterie faible' })).toHaveAttribute('aria-pressed', 'true')
+  await capture(page, 'smart-search.png')
+  await search.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Périphériques', exact: true })).toBeVisible()
+  await expect(page.getByRole('switch', { name: 'Alerte de batterie faible' })).toBeFocused()
+  await sidebar(page).getByRole('button', { name: 'Vue d’ensemble' }).click()
+  await expect(page.getByRole('button', { name: 'Seuil de batterie faible' })).toBeVisible()
+  await page.getByRole('button', { name: 'Screen OCR' }).click()
+  await expect.poll(() => page.evaluate(() => JSON.stringify((window as unknown as { __testAgent: { received: Command[] } }).__testAgent.received))).toContain('"id":"ocr"')
+})
+
+test('utilities expose a configurable radial menu and persist a previewed theme', async ({ page }) => {
+  await withAgent(page, status)
+  await sidebar(page).getByRole('button', { name: 'Utilitaires' }).click()
+  await expect(page.getByRole('heading', { name: 'Utilitaires' })).toBeVisible()
+  const radial = page.getByRole('group', { name: 'Menu radial', exact: true })
+  await radial.getByRole('button', { name: 'Secteur 2 : Épingler une capture' }).click()
+  await radial.getByRole('combobox', { name: 'Action du secteur 2' }).selectOption('desktop')
+  await expect(radial.getByRole('button', { name: 'Secteur 2 : Afficher le bureau' })).toHaveAttribute('aria-pressed', 'true')
+  await capture(page, 'utilitaires-radial.png')
+  await page.getByRole('button', { name: 'Enregistrer les outils et favoris' }).click()
+  await expect(page.getByRole('status')).toContainText('Réglages enregistrés.')
+  const themes = page.getByRole('group', { name: 'App Themes' })
+  await themes.getByRole('button', { name: 'Forêt' }).click()
+  await expect(page.locator('html')).toHaveCSS('--accent', '#8FE1BF')
+  await themes.getByRole('button', { name: 'Appliquer le thème' }).click()
+  await expect(page.getByRole('status')).toContainText('Réglages enregistrés.')
+  await sidebar(page).getByRole('button', { name: 'Vue d’ensemble' }).click()
+  await expect(page.locator('html')).toHaveCSS('--accent', '#8FE1BF')
+  await capture(page, 'overview-foret.png')
 })
 
 test('settings report readiness and remain navigable while agent data are pending', async ({ page }) => {
@@ -214,7 +255,7 @@ test('update installation waits for keyboard-accessible confirmation', async ({ 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await withAgent(page, status)
   await sidebar(page).getByRole('button', { name: 'Mises à jour' }).click()
-  await page.getByRole('button', { name: 'Rechercher' }).click()
+  await page.getByRole('main').getByRole('button', { name: 'Rechercher', exact: true }).click()
   const install = page.getByRole('button', { name: 'Installer la mise à jour' })
   await install.click()
   const modal = page.getByRole('dialog')

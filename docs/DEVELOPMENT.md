@@ -90,3 +90,22 @@ Utiliser le même Windows, poste, plan d’alimentation et ensemble de périphé
 | Monitoring | Mesurer à 2 s avec les deux vues ouvertes à tour de rôle, avec le seul débit réseau et les indicateurs choisis en tâche de fond, puis après désactivation |
 
 Consigner le CPU d’un cœur, working set, mémoire privée, nombre de handles, démarrage et présence du processus de réglages. Capturer aussi un profil WPR lors du monitoring si une différence doit être expliquée. La validation des mesures, du HDR et des combinaisons d’écrans reste à faire sur un Windows physique.
+
+## Validation interactive de WinLayer 4
+
+Utiliser l’installateur de CI sur Windows 11. Tester avec la fenêtre des paramètres fermée. La CI vérifie le paquet, les migrations et l’IPC de l’agent, dont la réservation et la restauration des raccourcis, ainsi que l’ouverture et la fermeture du Drop Shelf. Exécuter aussi les contrôles suivants sur le bureau interactif avant le tag stable.
+
+| Zone | Manipulation | Résultat attendu |
+| --- | --- | --- |
+| Barre des tâches | Connecter casque et manette. Comparer le bandeau à l’heure Windows à 100 %, 125 %, 150 % et 200 %. Basculer le thème et masquer la barre. | Les symboles et pourcentages restent lisibles et centrés. Le bandeau se place à gauche de la zone de notification et suit sa visibilité. |
+| Screen OCR | Sélectionner du texte hors ligne sur chaque écran. Tester les langues installées et une langue absente. Relancer, éditer, copier, fermer avec Échap. | Le texte suit les lignes et la zone demandée. L’absence d’un pack est indiquée. Par défaut, aucun fichier d’historique OCR n’est créé. Tester ensuite l’activation et l’effacement de l’historique. |
+| Screen Pin | Épingler deux régions sur des moniteurs à DPI différents. Redimensionner, zoomer, modifier l’opacité, copier puis enregistrer. | Les captures restent visibles après fermeture des paramètres et disparaissent à la fermeture de l’agent. |
+| Drop Shelf | Déposer un dossier, une image et du texte. Réorganiser les entrées, glisser vers une autre application et déplacer le fichier d’origine depuis Explorer. | Les originaux sont conservés. Les références invalides sont refusées. Le nettoyage exclut les entrées épinglées jusqu’à leur retrait. |
+| Palette et menu radial | Ajouter un favori et une macro, réorganiser les secteurs et ouvrir chaque menu au clavier et près de chaque bord. | Échap ou un clic extérieur referme les menus. Une action native s’ouvre directement. Un réglage ouvre la bonne page avec le contrôle ciblé. |
+| OSD et coins actifs | Activer Caps Lock, Num Lock, puis Scroll Lock. Configurer deux coins avec des délais distincts et tester un jeu en plein écran. | L’OSD n’intercepte pas les clics et ne prend pas le focus. Un coin se déclenche une fois par entrée et respecte le plein écran, les exclusions et le délai. |
+| Image Converter | Convertir un JPEG orienté, un PNG transparent, un BMP et un WebP, puis relancer le même lot et annuler à mi-parcours. | Les formats proposés reflètent les codecs Windows. L’orientation et les proportions sont correctes. Les sorties sont renommées en cas de doublon et les sources restent intactes. |
+| Thèmes, restauration et mise à jour | Prévisualiser Forêt et Contraste, sauvegarder un thème, exporter un profil, changer de raccourci puis redémarrer et annuler. Mettre à jour depuis la version précédente. | La configuration survit au redémarrage et à la mise à jour. Les collisions de raccourcis refusent le changement. Une restauration validée applique le profil ou laisse l’ancienne configuration en cas d’échec. |
+
+Mesurer le CPU, la RAM et le démarrage avec `scripts/Measure-WinLayer.ps1`. Comparer le repos après fermeture des réglages à une session avec coins actifs et indicateurs clavier. Attendre que les overlays soient fermés et répéter avec plusieurs écrans. Le suivi des coins utilise un timer seulement quand un coin est configuré. L’OSD utilise Raw Input seulement quand au moins un indicateur est activé. L’OCR et la conversion travaillent à la demande.
+
+La version actuelle propose un profil radial actif sélectionné dans l’éditeur, des réglages de coins communs aux écrans, et l’ouverture du panier par action ou raccourci. Elle exporte les images sans métadonnées et utilise la qualité réglable pour JPEG. Le thème change les pictogrammes du hub et les outils natifs rouverts. Les icônes Windows de l’exécutable et de l’installation suivent les ressources du paquet.
