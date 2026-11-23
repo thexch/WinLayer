@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string] $Version, [switch] $UpgradeFromV1, [switch] $UpgradeFromV24)
+param([Parameter(Mandatory)][string] $Version, [switch] $UpgradeFromV1, [switch] $UpgradeFromV24, [switch] $UpgradeFromV312)
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
@@ -12,13 +12,13 @@ try {
     $env:WINLAYER_SMOKE_UPGRADE_PACKAGE = $null
     $env:WINLAYER_SMOKE_UPGRADE_VERSION = $null
     $logName = 'setup-smoke.log'
-    if ($UpgradeFromV1 -or $UpgradeFromV24) {
-        $source = if ($UpgradeFromV24) { '2.4.0' } else { '1.0.0' }
-        $sourceHash = if ($UpgradeFromV24) {
-            '3D077EDAC6DC847C30E86DFBE7803CED08C65D6FACD01B6DC4E2D0BE8C0CFCE5'
-        } else {
-            '2030D5E68AC987DA64DEA39ED97BC01BABCE5FDFe7F86012CC164EEC001405D7'
-        }
+    if ($UpgradeFromV1 -or $UpgradeFromV24 -or $UpgradeFromV312) {
+        $source = if ($UpgradeFromV312) { '3.1.2' } elseif ($UpgradeFromV24) { '2.4.0' } else { '1.0.0' }
+        $sourceHash = @{
+            '1.0.0' = '2030D5E68AC987DA64DEA39ED97BC01BABCE5FDFe7F86012CC164EEC001405D7'
+            '2.4.0' = '3D077EDAC6DC847C30E86DFBE7803CED08C65D6FACD01B6DC4E2D0BE8C0CFCE5'
+            '3.1.2' = 'F6EEF6F9B2E20DAF63C653FE41028797ACB79F22D95FECF1E7E28654EA13D8D6'
+        }[$source]
         $archive = Join-Path (Get-Location).Path "artifacts/WinLayer-$source-Setup.exe"
         Invoke-WebRequest "https://github.com/thexch/WinLayer/releases/download/v$source/WinLayer-win-Setup.exe" -OutFile $archive
         if ((Get-FileHash -LiteralPath $archive).Hash -ne $sourceHash) {

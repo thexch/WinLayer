@@ -59,6 +59,8 @@ jobs:
         run: ./scripts/Test-WindowsPackage.ps1 -Version $env:GITHUB_REF_NAME.Substring(1) -UpgradeFromV1
       - name: Verify the update from the published V2.4
         run: ./scripts/Test-WindowsPackage.ps1 -Version $env:GITHUB_REF_NAME.Substring(1) -UpgradeFromV24
+      - name: Verify the update from the published V3.1.2
+        run: ./scripts/Test-WindowsPackage.ps1 -Version $env:GITHUB_REF_NAME.Substring(1) -UpgradeFromV312
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: stable-windows-packages

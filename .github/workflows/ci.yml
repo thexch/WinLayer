@@ -69,6 +69,8 @@ jobs:
         run: ./scripts/Test-WindowsPackage.ps1 -Version "4.0.0-ci.$env:GITHUB_RUN_NUMBER" -UpgradeFromV1
       - name: Verify the update from the published V2.4
         run: ./scripts/Test-WindowsPackage.ps1 -Version "4.0.0-ci.$env:GITHUB_RUN_NUMBER" -UpgradeFromV24
+      - name: Verify the update from the published V3.1.2
+        run: ./scripts/Test-WindowsPackage.ps1 -Version "4.0.0-ci.$env:GITHUB_RUN_NUMBER" -UpgradeFromV312
       - name: Upload the test report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

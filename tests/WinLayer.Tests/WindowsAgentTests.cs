@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinLayer.Core;
 
@@ -31,11 +32,11 @@ public sealed class WindowsAgentTests
             Assert.AreEqual(UpdateState.NotChecked, firstStatus.Updates.State);
             Assert.AreEqual(version, firstStatus.Version);
             if (migratedPreferences is not null)
-                Assert.AreEqual(migratedPreferences with
+                Assert.AreEqual(JsonSerializer.Serialize(migratedPreferences with
                 {
                     Battery = migratedPreferences.Battery with { Enabled = true },
                     AutoClicker = migratedPreferences.AutoClicker with { Enabled = true }
-                }, firstStatus.Preferences);
+                }), JsonSerializer.Serialize(firstStatus.Preferences));
             Assert.IsTrue(firstStatus.Preferences.Battery.Enabled);
             Assert.IsTrue(firstStatus.Preferences.AutoClicker.Enabled);
             Assert.IsFalse(CanRegister(HubOptions.Default(HubTool.Picker).Shortcut));
@@ -345,13 +346,21 @@ public sealed class WindowsAgentTests
         };
         var save = await LocalProtocol.SendAsync(new(Command.Save, Preferences: migrated), stop);
         Assert.IsNull(save.Error);
-        Assert.AreEqual(migrated, save.Status?.Preferences);
-        if (oldVersion == "2.4.0")
+        Assert.AreEqual(JsonSerializer.Serialize(migrated), JsonSerializer.Serialize(save.Status?.Preferences));
+        if (oldVersion is "2.4.0" or "3.1.2")
         {
             var clicker = migrated.AutoClicker with { Cps = 77 };
             var savedClicker = await LocalProtocol.SendAsync(new(Command.SaveAutoClicker, ClickerOptions: clicker), stop);
             Assert.IsNull(savedClicker.Error);
             migrated = migrated with { AutoClicker = clicker };
+        }
+        if (oldVersion == "3.1.2")
+        {
+            var taskbar = (migrated.Hub ?? new()).Get(HubTool.Taskbar) with { Color = "#4258E6", TaskbarEffect = TaskbarEffect.Frame };
+            var saved = await LocalProtocol.SendAsync(new(Command.Hub, Hub: new(HubTool.Taskbar, HubAction.Configure, taskbar)), stop);
+            Assert.IsNull(saved.Error);
+            Assert.AreEqual("#4258E6", saved.Status?.Preferences.Hub?.Get(HubTool.Taskbar).Color);
+            migrated = saved.Status!.Preferences;
         }
         var quit = await LocalProtocol.SendAsync(new(Command.Quit), stop);
         Assert.IsNull(quit.Error);
