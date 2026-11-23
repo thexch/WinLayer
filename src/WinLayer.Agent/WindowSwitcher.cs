@@ -26,16 +26,20 @@ internal sealed class WindowSwitcher : HubOverlay
         AccessibleName = "Sélecteur de fenêtres";
         _feedback = feedback;
         _selected = selected;
-        BackColor = Color.FromArgb(29, 31, 55);
+        FormBorderStyle = FormBorderStyle.FixedSingle;
+        MinimizeBox = false;
+        MaximizeBox = false;
+        UtilityWindows.Style(this);
+        BackColor = UtilityWindows.Canvas;
         var accent = ColorTranslator.FromHtml(options.Color);
-        var panel = Color.FromArgb(36, 39, 68);
-        ForeColor = Color.FromArgb(242, 241, 255);
+        var panel = UtilityWindows.Surface;
+        ForeColor = UtilityWindows.Ink;
         Padding = new Padding(20, 17, 20, 13);
         _search.BorderStyle = BorderStyle.FixedSingle;
         _search.BackColor = panel;
         _search.ForeColor = ForeColor;
         _search.AccessibleName = "Rechercher une fenêtre";
-        _hint.ForeColor = Color.FromArgb(189, 194, 224);
+        _hint.ForeColor = UtilityWindows.Ink;
         _windows = windows;
         _list = new ListView
         {
@@ -69,7 +73,7 @@ internal sealed class WindowSwitcher : HubOverlay
         headline.Disposed += (_, _) => headline.Font.Dispose();
         var previewPanel = new Panel { Dock = DockStyle.Right, Width = Math.Clamp(width / 2, 225, 430), Padding = new Padding(9, 0, 0, 0) };
         previewPanel.Visible = width >= 620;
-        _preview.BackColor = Color.FromArgb(20, 22, 39);
+        _preview.BackColor = UtilityWindows.Canvas;
         _previewMessage.Text = "Aperçu indisponible";
         _previewMessage.ForeColor = _hint.ForeColor;
         _preview.Controls.Add(_previewMessage);

@@ -10,6 +10,7 @@
     <WebAssets>$(MSBuildProjectDirectory)/../../web/dist</WebAssets>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../WinLayer.Desktop/CaptionTheme.cs" Link="CaptionTheme.cs" />
     <ProjectReference Include="../WinLayer.Core/WinLayer.Core.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4370.26" />
     <EmbeddedResource Include="../WinLayer.Agent/WinLayer.ico" LogicalName="WinLayer.ico" />

@@ -13,6 +13,7 @@
     <ApplicationIcon>WinLayer.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../WinLayer.Desktop/CaptionTheme.cs" Link="CaptionTheme.cs" />
     <ProjectReference Include="../WinLayer.Modules/WinLayer.Modules.csproj" />
     <PackageReference Include="Velopack" Version="1.2.161" />
     <EmbeddedResource Include="WinLayer.ico" LogicalName="WinLayer.ico" />

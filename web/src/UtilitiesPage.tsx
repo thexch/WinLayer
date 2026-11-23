@@ -1,10 +1,11 @@
+import { ColorField } from './ColorField'
 import { useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   BatteryCharging, Circle, Cpu, Crosshair, Download, Droplet, Folder, Image, Keyboard, Layers, LayoutGrid, Monitor,
   MousePointerClick, Pin, Radio, ScanLine, Search, Settings2, Star, TextCursor, Workflow, X,
 } from 'lucide-react'
-import { Choice, Flag, Hotkey, NumberField } from './HubControls'
+import { Choice, Flag, Hotkey, NumberField, TabButtons } from './HubControls'
 import { shortcutName } from './hub'
 import { defaults, luminance, searchEntries, standardThemes, type AppTheme, type Entry, type UtilityOptions, type UtilityRequest } from './utility'
 
@@ -106,6 +107,8 @@ export function ScreenUtilities({ options, canEdit, run }: {
       <div id="ocrLanguage"><Choice label="Langue de reconnaissance" value={draft.language}
         choices={[[ 'fr', 'Français' ], [ 'en', 'English' ]]} onChange={language => setDraft({ ...draft, language })} /></div>
       <Flag label="Copier automatiquement le texte" value={draft.autoCopy} onChange={autoCopy => setDraft({ ...draft, autoCopy })} />
+      <Hotkey label="Raccourci Screen OCR" value={draft.ocr} onChange={ocr => setDraft({ ...draft, ocr })} />
+      <Hotkey label="Raccourci Screen Pin" value={draft.pin} onChange={pin => setDraft({ ...draft, pin })} />
       <Flag label="Conserver un historique OCR local" value={draft.ocrHistory} onChange={ocrHistory => setDraft({ ...draft, ocrHistory })} />
       <button type="button" className="button primary" disabled={draft === options} onClick={() => void run({ action: 'save', options: draft })}>Enregistrer</button>
     </fieldset>
@@ -113,9 +116,24 @@ export function ScreenUtilities({ options, canEdit, run }: {
   </section>
 }
 
-export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
+export const utilitySections = [
+  ['files', 'Fichiers'], ['commands', 'Commandes et favoris'], ['desktop', 'Bureau'],
+] as const
+export type UtilitySection = typeof utilitySections[number][0]
+export type UtilityView = UtilitySection | 'appearance' | 'profiles'
+
+export function utilitySectionFor(target: string | undefined): UtilityView | undefined {
+  if (target === 'shelfHours') return 'files'
+  if (target === 'radialSettings') return 'commands'
+  if (target === 'corners' || target === 'lockSettings') return 'desktop'
+  if (target === 'themes') return 'appearance'
+  if (target === 'history') return 'profiles'
+}
+
+export function UtilitiesPage({ options, items, canEdit, undo, run, preview, section, selectSection }: {
   options: UtilityOptions; items: Entry[]; canEdit: boolean; undo?: string | null; run: (request: UtilityRequest) => Promise<boolean>
   preview: (theme: AppTheme | undefined) => void
+  section: UtilityView; selectSection?: (section: UtilitySection) => void
 }) {
   const [draft, setDraft] = useState(options)
   const [theme, setTheme] = useState<AppTheme>(() => options.themes.find(item => item.name === options.theme) ?? standardThemes[1])
@@ -161,27 +179,51 @@ export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
     if (await run({ action: 'save', options: { ...draft, themes: [...themes, selected], theme: selected.name } })) preview(undefined)
   }
 
+  function launch(id: string, label: string) {
+    const item = items.find(entry => entry.id === id)
+    return <button type="button" className="button secondary" disabled={!canEdit} onClick={() => void run({ action: 'execute', id })}>
+      {item && <EntryIcon entry={item} />}{label}
+    </button>
+  }
+
   return <div className="utilities-layout">
-    <div className="utility-launches">
-      {items.filter(item => ['shelf', 'radial', 'palette', 'converter'].includes(item.id)).map(item =>
-        <button type="button" key={item.id} className="button secondary" disabled={!canEdit} onClick={() => void run({ action: 'execute', id: item.id })}>
-          <EntryIcon entry={item} /> {item.label}
-        </button>)}
-    </div>
-    <fieldset disabled={!canEdit} className="utility-section"><legend>Raccourcis globaux</legend>
-      <div className="utility-controls">{shortcuts.map(([key, label]) => <Hotkey key={key} label={label} value={draft[key]} onChange={value => change(key, value)} />)}
-        <Flag label="Conserver les actions récentes entre les sessions" value={draft.persistRecent} onChange={value => change('persistRecent', value)} />
-      </div>
-    </fieldset>
+    {selectSection && section !== 'appearance' && section !== 'profiles' &&
+      <TabButtons label="Catégories d’utilitaires" choices={utilitySections} active={section} select={selectSection} />}
+    {section === 'files' && <>
     <fieldset disabled={!canEdit} className="utility-section" id="shelfHours"><legend>Drop Shelf</legend>
+      <div className="utility-launches">{launch('shelf', 'Ouvrir le panier')}</div>
       <div className="utility-controls">{numbers.map(([key, label, min, max]) =>
         <NumberField key={key} label={label} min={min} max={max} value={draft[key]} onChange={value => change(key, value)} />)}
         <Choice label="Position du panier" value={String(draft.shelfPosition)}
           choices={[[ '0', 'Haut gauche' ], [ '1', 'Haut droit' ], [ '2', 'Bas gauche' ], [ '3', 'Bas droit' ]]}
           onChange={value => change('shelfPosition', Number(value))} />
+        <Hotkey label="Raccourci Drop Shelf" value={draft.shelf} onChange={value => change('shelf', value)} />
+      </div>
+    </fieldset>
+    <fieldset disabled={!canEdit} className="utility-section"><legend>Conversion d’images</legend>
+      <div className="utility-launches">{launch('converter', 'Ouvrir Image Converter')}</div>
+    </fieldset>
+    <fieldset disabled={!canEdit} className="utility-section"><legend>Applications, fichiers et dossiers</legend>
+      <div className="utility-launches">
+        <button type="button" className="button secondary" disabled={draft.launchers.length >= 12} onClick={() => void run({ action: 'addFile' })}>Ajouter un fichier ou une application…</button>
+        <button type="button" className="button secondary" disabled={draft.launchers.length >= 12} onClick={() => void run({ action: 'addFolder' })}>Ajouter un dossier…</button>
+      </div>
+      <ul className="favorite-list">{draft.launchers.map(item => <li key={item.id}>
+        <span><strong>{item.label}</strong><br /><small>{item.path}</small></span>
+        <button type="button" className="icon-button" aria-label={`Retirer le raccourci ${item.label}`} onClick={() => change('launchers', draft.launchers.filter(action => action.id !== item.id))}><X size={17} /></button>
+      </li>)}</ul>
+    </fieldset>
+    </>}
+    {section === 'commands' && <>
+    <fieldset disabled={!canEdit} className="utility-section"><legend>Palette de commandes</legend>
+      <div className="utility-launches">{launch('palette', 'Ouvrir la palette')}</div>
+      <div className="utility-controls">
+        <Hotkey label="Raccourci de la palette" value={draft.palette} onChange={value => change('palette', value)} />
+        <Flag label="Conserver les actions récentes entre les sessions" value={draft.persistRecent} onChange={value => change('persistRecent', value)} />
       </div>
     </fieldset>
     <fieldset disabled={!canEdit} className="utility-section" id="radialSettings"><legend>Menu radial</legend>
+      <div className="utility-launches">{launch('radial', 'Ouvrir le menu radial')}</div>
       <div className="radial-editor">
         <div className="radial-preview" aria-label="Aperçu du menu radial">
           {draft.radialItems.map((id, index) => {
@@ -204,7 +246,8 @@ export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
         </div>
       </div>
       <div className="utility-controls">
-        <label className="utility-color">Couleur du menu <input type="color" value={draft.radialAccent} onChange={event => change('radialAccent', event.target.value)} /></label>
+        <Hotkey label="Raccourci du menu radial" value={draft.radial} onChange={value => change('radial', value)} />
+        <ColorField label="Couleur du menu" value={draft.radialAccent} onChange={color => change('radialAccent', color)} />
         <NumberField label="Nombre de secteurs" min={1} max={8} value={draft.radialItems.length} onChange={value => change('radialItems', Array.from({ length: Math.max(1, Math.min(8, value)) }, (_, index) => draft.radialItems[index] ?? 'palette'))} />
       </div>
       <div className="utility-controls">
@@ -226,6 +269,18 @@ export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
           onClick={() => change('radialPresets', draft.radialPresets.filter(item => item.name !== preset.name))}><X size={17} /></button>
       </li>)}</ul>
     </fieldset>
+    <fieldset disabled={!canEdit} className="utility-section"><legend>Favoris</legend>
+      <p className="fine">Ajoutez une action à vos favoris avec l’étoile dans la recherche.</p>
+      <ol className="favorite-list">{draft.favorites.map((id, index) => <li key={id}>
+        <span>{items.find(item => item.id === id)?.label ?? id}</span>
+        <button type="button" className="icon-button" disabled={index === 0} aria-label="Monter le favori" onClick={() => {
+          const next = [...draft.favorites]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; change('favorites', next)
+        }}>↑</button>
+        <button type="button" className="icon-button" aria-label="Retirer le favori" onClick={() => change('favorites', draft.favorites.filter(item => item !== id))}><X size={17} /></button>
+      </li>)}</ol>
+    </fieldset>
+    </>}
+    {section === 'desktop' && <>
     <fieldset disabled={!canEdit} className="utility-section" id="corners"><legend>Coins actifs</legend>
       <div className="utility-controls">
         <div className="corner-screen" aria-label="Coins d’un écran">
@@ -249,16 +304,6 @@ export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
         </label>
       </div>
     </fieldset>
-    <fieldset disabled={!canEdit} className="utility-section"><legend>Applications, fichiers et dossiers</legend>
-      <div className="utility-launches">
-        <button type="button" className="button secondary" disabled={draft.launchers.length >= 12} onClick={() => void run({ action: 'addFile' })}>Ajouter un fichier ou une application…</button>
-        <button type="button" className="button secondary" disabled={draft.launchers.length >= 12} onClick={() => void run({ action: 'addFolder' })}>Ajouter un dossier…</button>
-      </div>
-      <ul className="favorite-list">{draft.launchers.map(item => <li key={item.id}>
-        <span><strong>{item.label}</strong><br /><small>{item.path}</small></span>
-        <button type="button" className="icon-button" aria-label={`Retirer le raccourci ${item.label}`} onClick={() => change('launchers', draft.launchers.filter(action => action.id !== item.id))}><X size={17} /></button>
-      </li>)}</ul>
-    </fieldset>
     <fieldset disabled={!canEdit} className="utility-section" id="lockSettings"><legend>Indicateurs clavier</legend>
       <div className="utility-controls">
         {locks.map(([key, label]) => <Flag key={key} label={label} value={draft[key]} onChange={value => change(key, value)} />)}
@@ -268,18 +313,8 @@ export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
         <Choice label="Position" value={String(draft.osdPosition)} choices={[[ '0', 'Haut' ], [ '1', 'Bas' ], [ '2', 'Centre' ]]} onChange={value => change('osdPosition', Number(value))} />
       </div>
     </fieldset>
-    <fieldset disabled={!canEdit} className="utility-section"><legend>Favoris</legend>
-      <p className="fine">Ajoutez une action à vos favoris avec l’étoile dans la recherche.</p>
-      <ol className="favorite-list">{draft.favorites.map((id, index) => <li key={id}>
-        <span>{items.find(item => item.id === id)?.label ?? id}</span>
-        <button type="button" className="icon-button" disabled={index === 0} aria-label="Monter le favori" onClick={() => {
-          const next = [...draft.favorites]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; change('favorites', next)
-        }}>↑</button>
-        <button type="button" className="icon-button" aria-label="Retirer le favori" onClick={() => change('favorites', draft.favorites.filter(item => item !== id))}><X size={17} /></button>
-      </li>)}</ol>
-      <button type="button" className="button primary" disabled={draft === options} onClick={() => void save()}>Enregistrer les outils et favoris</button>
-    </fieldset>
-    <fieldset disabled={!canEdit} className="utility-section" id="themes"><legend>App Themes</legend>
+    </>}
+    {section === 'appearance' && <fieldset disabled={!canEdit} className="utility-section" id="themes"><legend>App Themes</legend>
       <div className="theme-swatches">{[...standardThemes, ...draft.themes.filter(item => !standardThemes.some(standard => item.name === standard.name))].map(item =>
         <button type="button" key={item.name} className="button secondary" aria-pressed={item.name === theme.name}
           onClick={() => { const selected = draft.themes.find(saved => saved.name === item.name) ?? item; setTheme(selected); preview(selected) }}>
@@ -288,7 +323,7 @@ export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
       <div className="utility-controls">
         <label className="utility-text">Nom du thème <input value={theme.name} maxLength={40} onChange={event => setTheme({ ...theme, name: event.target.value })} /></label>
         {([['canvas', 'Fond'], ['surface', 'Surfaces'], ['ink', 'Texte'], ['accent', 'Accent'], ['border', 'Bordures']] as const).map(([key, label]) =>
-          <label key={key} className="utility-color">{label} <input type="color" value={theme[key]} onChange={event => setTheme({ ...theme, [key]: event.target.value })} /></label>)}
+          <ColorField key={key} label={label} value={theme[key]} onChange={color => setTheme({ ...theme, [key]: color })} />)}
         <NumberField label="Arrondis" min={4} max={30} value={theme.radius} onChange={radius => setTheme({ ...theme, radius })} />
         <NumberField label="Densité (%)" min={85} max={120} value={theme.density} onChange={density => setTheme({ ...theme, density })} />
         <Flag label="Animations" value={theme.motion} onChange={motion => setTheme({ ...theme, motion })} />
@@ -302,15 +337,20 @@ export function UtilitiesPage({ options, items, canEdit, undo, run, preview }: {
           if (await run({ action: 'save', options: { ...draft, themes: draft.themes.filter(item => item.name !== theme.name), theme: draft.theme === theme.name ? '' : draft.theme } })) preview(undefined)
         }}>Supprimer ce thème</button>}
       </div>
-    </fieldset>
-    <fieldset disabled={!canEdit} className="utility-section" id="history"><legend>Restauration</legend>
+    </fieldset>}
+    {section === 'profiles' && <fieldset disabled={!canEdit} className="utility-section" id="history"><legend>Restauration</legend>
       <div className="utility-launches">
         <button type="button" className="button secondary" disabled={!undo} onClick={() => void run({ action: 'undo' })}>{undo ? `Annuler · ${undo}` : 'Aucune modification à annuler'}</button>
         <button type="button" className="button secondary" onClick={() => void run({ action: 'export' })}>Exporter un profil</button>
         <button type="button" className="button secondary" onClick={() => void run({ action: 'import' })}>Importer un profil</button>
         <button type="button" className="button secondary" onClick={() => setDraft({ ...defaults, themes: draft.themes, theme: draft.theme, favorites: draft.favorites, launchers: draft.launchers })}>Rétablir les outils par défaut</button>
       </div>
-    </fieldset>
+    </fieldset>}
+    {draft !== options && <div className="utility-save">
+      <span>Modifications en attente</span>
+      <button type="button" className="button secondary" disabled={!canEdit} onClick={() => { setDraft(options); setMessage('') }}>Annuler</button>
+      <button type="button" className="button primary" disabled={!canEdit} onClick={() => void save()}>Enregistrer les réglages</button>
+    </div>}
     {message && <p className="notice" role="alert">{message}</p>}
   </div>
 }

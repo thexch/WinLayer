@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { CircleAlert, Keyboard, Pause, Play } from 'lucide-react'
+import { Choice } from './HubControls'
 import type { AutoClickerOptions, AutoClickerStatus, ClickShortcut } from './bridge'
 
 const modifiers = [
@@ -69,11 +70,8 @@ function ShortcutField({ label, value, onChange, onRecord }: {
 
   return <div className="clicker-shortcut">
     <div className="clicker-shortcut-head">
-      <label><span>{label}</span>
-        <select aria-label={label} value={value.key} onChange={(event) => onChange({ ...value, key: Number(event.target.value) })}>
-          {keys.map((key) => <option key={key} value={key}>{keyLabel(key)}</option>)}
-        </select>
-      </label>
+      <Choice label={label} value={value.key} choices={keys.map(key => [key, keyLabel(key)] as const)}
+        onChange={key => onChange({ ...value, key })} />
       <button type="button" className="button secondary" ref={record} onClick={() => { void begin() }}
         aria-label={recording ? `Appuyez sur les touches… ${label}` : `Enregistrer les touches · ${label}`}
         aria-pressed={recording} onKeyDown={capture} onBlur={() => setRecording(false)}>
@@ -166,41 +164,22 @@ export function AutoClickerPage({ options, status, canEdit, onSave, onPause, onR
       <fieldset disabled={!canEdit} className="clicker-fields">
         <legend>Séquence</legend>
         <div className="clicker-grid">
-          <label>Type de clic
-            <select aria-label="Type de clic" value={options.kind} onChange={(event) => update({ kind: event.target.value as AutoClickerOptions['kind'] })}>
-              <option value="left">Gauche</option>
-              <option value="right">Droit</option>
-              <option value="middle">Molette</option>
-              <option value="double">Double-clic</option>
-            </select>
-          </label>
+          <Choice label="Type de clic" value={options.kind} choices={[['left', 'Gauche'], ['right', 'Droit'], ['middle', 'Molette'], ['double', 'Double-clic']]}
+            onChange={kind => update({ kind })} />
           <div>
             <div id="clickerSpeed"><NumberSetting label="Vitesse (CPS)" value={options.cps} min={1} max={200} unit="CPS" onChange={(cps) => update({ cps })} /></div>
             <output className="fine mono" aria-label="Intervalle entre actions">{milliseconds.format(1000 / options.cps)} ms par action</output>
           </div>
-          <label>Mode
-            <select aria-label="Mode" value={options.mode} onChange={(event) => update({ mode: event.target.value as AutoClickerOptions['mode'] })}>
-              <option value="toggle">Bascule (Toggle)</option>
-              <option value="hold">Maintien (Hold)</option>
-            </select>
-          </label>
-          <label>Position
-            <select aria-label="Position" value={options.position} onChange={(event) => update({ position: event.target.value as AutoClickerOptions['position'] })}>
-              <option value="cursor">Suivre le curseur</option>
-              <option value="fixed">Coordonnées fixes</option>
-            </select>
-          </label>
+          <Choice label="Mode" value={options.mode} choices={[['toggle', 'Bascule (Toggle)'], ['hold', 'Maintien (Hold)']]}
+            onChange={mode => update({ mode })} />
+          <Choice label="Position" value={options.position} choices={[['cursor', 'Suivre le curseur'], ['fixed', 'Coordonnées fixes']]}
+            onChange={position => update({ position })} />
           {options.position === 'fixed' && <>
             <NumberSetting label="Coordonnée X" value={options.x} min={-2147483648} max={2147483647} unit="px" onChange={(x) => update({ x })} />
             <NumberSetting label="Coordonnée Y" value={options.y} min={-2147483648} max={2147483647} unit="px" onChange={(y) => update({ y })} />
           </>}
-          <label>Limite
-            <select aria-label="Limite" value={options.limit} onChange={(event) => update({ limit: event.target.value as AutoClickerOptions['limit'] })}>
-              <option value="unlimited">Illimitée</option>
-              <option value="count">Nombre d’actions</option>
-              <option value="duration">Durée maximale</option>
-            </select>
-          </label>
+          <Choice label="Limite" value={options.limit} choices={[['unlimited', 'Illimitée'], ['count', 'Nombre d’actions'], ['duration', 'Durée maximale']]}
+            onChange={limit => update({ limit })} />
           {options.limit === 'count' && <NumberSetting label="Nombre d’actions" value={options.count} min={1} max={1_000_000}
             onChange={(count) => update({ count })} />}
           {options.limit === 'duration' && <NumberSetting label="Durée maximale (s)" value={options.durationSeconds} min={1} max={86_400}

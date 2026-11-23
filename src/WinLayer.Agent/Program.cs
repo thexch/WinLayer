@@ -54,8 +54,17 @@ internal static class Program
         {
             WindowsSettings.Log("Échec du lancement de l’agent.", error);
             if (!args.Contains("--background"))
-                MessageBox.Show("WinLayer n’a pas pu démarrer. Consultez le journal local.", "WinLayer",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowFailure("WinLayer n’a pas pu démarrer. Consultez le journal local.");
+        }
+    }
+
+    private static void ShowFailure(string message)
+    {
+        try { UtilityWindows.ConfirmMessage("WinLayer", message); }
+        catch (Exception error)
+        {
+            WindowsSettings.Log("Affichage de l’erreur.", error);
+            MessageBox.Show(message, "WinLayer", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -82,8 +91,7 @@ internal static class Program
         catch (Exception error)
         {
             WindowsSettings.Log("Impossible de joindre l’instance active.", error);
-            MessageBox.Show("L’agent WinLayer ne répond pas. Réessayez dans quelques instants.", "WinLayer",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowFailure("L’agent WinLayer ne répond pas. Réessayez dans quelques instants.");
         }
     }
 }

@@ -167,19 +167,21 @@ internal sealed class MacroSession(Action<string> report, SynchronizationContext
         {
             Text = "Macro Recorder — Enregistrement local";
             AccessibleName = Text;
-            BackColor = Color.FromArgb(120, 35, 57);
-            ForeColor = Color.White;
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MinimizeBox = false;
+            MaximizeBox = false;
+            UtilityWindows.Style(this);
+            BackColor = UtilityWindows.Canvas;
+            ForeColor = UtilityWindows.Ink;
             Padding = new Padding(16);
             var area = Screen.FromPoint(Cursor.Position).WorkingArea;
             Bounds = new(area.Left + (area.Width - 560) / 2, area.Top + (area.Height - 400) / 2, 560, 400);
-            _status = new Label { Dock = DockStyle.Top, Height = 62, Text = "● Enregistrement · Échap pour terminer\nSeules les entrées dans cette fenêtre sont enregistrées.", ForeColor = Color.White };
+            _status = new Label { Dock = DockStyle.Top, Height = 62, Text = "● Enregistrement · Échap pour terminer\nSeules les entrées dans cette fenêtre sont enregistrées.", ForeColor = UtilityWindows.Accent };
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40 };
-            var pause = new Button { Text = "Pause / reprendre", AutoSize = true, ForeColor = Color.Black, UseVisualStyleBackColor = true };
-            var stop = new Button { Text = "Terminer", AutoSize = true, ForeColor = Color.Black, UseVisualStyleBackColor = true };
-            pause.Click += (_, _) => TogglePause();
-            stop.Click += (_, _) => Close();
+            var pause = UtilityWindows.Button("Pause / reprendre", TogglePause);
+            var stop = UtilityWindows.Button("Terminer", Close);
             buttons.Controls.AddRange([pause, stop]);
-            _surface = new RecordingSurface { Dock = DockStyle.Fill, BackColor = Color.FromArgb(39, 44, 74), TabStop = true, AccessibleName = "Surface d’enregistrement" };
+            _surface = new RecordingSurface { Dock = DockStyle.Fill, BackColor = UtilityWindows.Surface, TabStop = true, AccessibleName = "Surface d’enregistrement" };
             _surface.MouseDown += (_, e) =>
             {
                 _surface.Focus();

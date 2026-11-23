@@ -138,12 +138,18 @@ public sealed class WindowsAgentTests
         Assert.AreEqual(original.Ocr, restored.Status?.Preferences.Utilities?.Ocr);
         Assert.IsFalse(CanRegister(original.Ocr));
         Assert.IsTrue(CanRegister(updated.Ocr));
+        var theme = new AppTheme("Forêt", "#101E1C", "#192F2B", "#E3F7ED", "#8FE1BF", "#385D50");
+        Assert.IsNull((await Send(new(UtilityAction.Save, Options: original with { Themes = [theme], Theme = theme.Name }))).Error);
         var shown = await Send(new(UtilityAction.Execute, "shelf"));
         Assert.IsNull(shown.Error);
-        Assert.AreNotEqual(IntPtr.Zero, FindWindowW(null, "Drop Shelf — WinLayer"));
+        var shelf = FindWindowW(null, "Drop Shelf — WinLayer");
+        Assert.AreNotEqual(IntPtr.Zero, shelf);
+        Assert.AreEqual(0, DwmGetWindowAttribute(shelf, 35, out var captionColor, sizeof(uint)));
+        Assert.AreEqual(0x002B2F19u, captionColor);
         var hidden = await Send(new(UtilityAction.Execute, "shelf"));
         Assert.IsNull(hidden.Error);
         Assert.AreEqual(IntPtr.Zero, FindWindowW(null, "Drop Shelf — WinLayer"));
+        Assert.IsNull((await Send(new(UtilityAction.Undo))).Error);
     }
 
     private static async Task VerifyHubWhileSettingsClosedAsync(CancellationToken stop)
@@ -315,6 +321,9 @@ public sealed class WindowsAgentTests
         Assert.IsTrue(UnregisterHotKey(IntPtr.Zero, id));
         return true;
     }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out uint value, uint size);
 
     [DllImport("user32.dll")]
     private static extern bool IsZoomed(IntPtr window);

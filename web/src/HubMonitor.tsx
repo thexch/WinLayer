@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, Cpu, HardDrive, MemoryStick, Radio, RefreshCw } from 'lucide-react'
+import { ColorField } from './ColorField'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ArrowDownToLine, ArrowUpFromLine, Cpu, HardDrive, MemoryStick, Radio, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { Choice, Field, Flag, HubForm, NumberField, TabButtons } from './HubControls'
 import { defaultHubOptions, type HubMetrics, type HubOptions, type HubProcess, type HubSample } from './hub'
 import type { HubPageProps } from './HubTools'
@@ -72,40 +73,45 @@ function summarize(history: HubSample[], key: 'down' | 'up') {
     { mean: null, peak: null }
 }
 
-function NetworkReadings({ metrics, options }: { metrics?: HubMetrics | null; options: HubOptions }) {
+function NetworkReadings({ metrics, options, settings }: { metrics?: HubMetrics | null; options: HubOptions; settings: ReactNode }) {
   const history = metrics?.history.slice(-options.history) ?? []
   const present = history.at(-1)
   const adapter = metrics?.adapters.find(adapter => adapter.id === metrics.activeAdapter)
   return <section className="hub-panel hub-monitor-panel">
     <div className="hub-panel-heading"><h2>Trafic réseau</h2><span className="fine">{adapter?.name ?? 'Interface indisponible'}</span></div>
-    <div className="hub-net-values">
-      {networkSeries.map(({ key, label }, index) => {
-        const Icon = index === 0 ? ArrowDownToLine : ArrowUpFromLine
-        const signal = key === 'down' ? 'down' : 'up'
-        const summary = summarize(history, signal)
-        return <div key={key}>
-          <span className="hub-stat-label"><Icon size={16} aria-hidden="true" /> {label}</span>
-          <strong className="hub-value">{rate(present?.[signal], options.rateUnit)}</strong>
-          <span className="fine">Moyenne {rate(summary.mean, options.rateUnit)} · Pic {rate(summary.peak, options.rateUnit)}</span>
+    <div className="network-content">
+      {settings}
+      <div className="network-readings">
+        <div className="hub-net-values">
+          {networkSeries.map(({ key, label }, index) => {
+            const Icon = index === 0 ? ArrowDownToLine : ArrowUpFromLine
+            const signal = key === 'down' ? 'down' : 'up'
+            const summary = summarize(history, signal)
+            return <div key={key}>
+              <span className="hub-stat-label"><Icon size={16} aria-hidden="true" /> {label}</span>
+              <strong className="hub-value">{rate(present?.[signal], options.rateUnit)}</strong>
+              <span className="fine">Moyenne {rate(summary.mean, options.rateUnit)} · Pic {rate(summary.peak, options.rateUnit)}</span>
+            </div>
+          })}
         </div>
-      })}
+        <StatsChart history={history} series={networkSeries} unit={options.rateUnit} />
+        <dl className="hub-metric-pairs">
+          <div><dt>Adaptateur</dt><dd>{adapter ? `${adapter.name} · ${adapter.kind}` : '—'}</dd></div>
+          <div><dt>Reçus depuis la remise à zéro du compteur</dt><dd>{adapter ? bytes(metrics?.received) : '—'}</dd></div>
+          <div><dt>Envoyés depuis la remise à zéro du compteur</dt><dd>{adapter ? bytes(metrics?.sent) : '—'}</dd></div>
+        </dl>
+      </div>
     </div>
-    <StatsChart history={history} series={networkSeries} unit={options.rateUnit} />
-    <dl className="hub-metric-pairs">
-      <div><dt>Adaptateur</dt><dd>{adapter ? `${adapter.name} · ${adapter.kind}` : '—'}</dd></div>
-      <div><dt>Reçus depuis la remise à zéro du compteur</dt><dd>{adapter ? bytes(metrics?.received) : '—'}</dd></div>
-      <div><dt>Envoyés depuis la remise à zéro du compteur</dt><dd>{adapter ? bytes(metrics?.sent) : '—'}</dd></div>
-    </dl>
   </section>
 }
 
 export function NetworkPage({ status, data, run, busy }: HubPageProps) {
   const options = data?.tools.network ?? defaultHubOptions('network')
   const metrics = status.metrics
-  return <>
-    <NetworkReadings metrics={metrics} options={options} />
-    <HubForm tool="network" options={options} key={JSON.stringify(options)} run={run} busy={busy}>
+  return <NetworkReadings metrics={metrics} options={options} settings={<MonitorSettings label="Réglages du réseau">
+    <HubForm compact tool="network" options={options} key={JSON.stringify(options)} run={run} busy={busy}>
       {(draft, patch) => <>
+        <div className="hub-form-grid">
         <Choice label="Interface réseau" value={draft.adapter}
           choices={[[ '', 'Automatique' ], ...(draft.adapter && !metrics?.adapters.some(adapter => adapter.id === draft.adapter)
             ? [[draft.adapter, 'Adaptateur indisponible'] as const] : []),
@@ -113,21 +119,28 @@ export function NetworkPage({ status, data, run, busy }: HubPageProps) {
           onChange={adapter => patch({ adapter })} />
         <Choice label="Unité" value={draft.rateUnit} choices={[[ 'kilobytes', 'KB/s' ], [ 'megabytes', 'MB/s' ], [ 'megabits', 'Mb/s' ]]}
           onChange={rateUnit => patch({ rateUnit })} />
+        </div>
         <div className="hub-form-grid">
           <NumberField label="Actualisation (s)" min={1} max={60} value={draft.seconds} onChange={seconds => patch({ seconds })} />
           <NumberField label="Historique (échantillons)" min={15} max={180} value={draft.history} onChange={history => patch({ history })} />
         </div>
         <Flag label="Icône de débit dans la zone de notification" value={draft.indicator} onChange={indicator => patch({ indicator })} />
-        {draft.indicator && <Field label="Couleur de l’icône"><input type="color" value={draft.color}
-          onChange={event => patch({ color: event.currentTarget.value })} /></Field>}
+        {draft.indicator && <ColorField label="Couleur de l’icône" value={draft.color} onChange={color => patch({ color })} />}
       </>}
     </HubForm>
-  </>
+  </MonitorSettings>} />
 }
 
-type SystemView = 'summary' | 'cpu' | 'gpu' | 'ram' | 'disk' | 'network' | 'processes'
+function MonitorSettings({ label, children }: { label: string; children: ReactNode }) {
+  return <details className="monitor-settings">
+    <summary><SlidersHorizontal size={16} aria-hidden="true" />{label}</summary>
+    {children}
+  </details>
+}
+
+type SystemView = 'summary' | 'cpu' | 'gpu' | 'ram' | 'disk' | 'processes'
 const systemViews: readonly (readonly [SystemView, string])[] = [
-  ['summary', 'Vue système'], ['cpu', 'CPU'], ['gpu', 'GPU'], ['ram', 'Mémoire'], ['disk', 'Disques'], ['network', 'Réseau'], ['processes', 'Processus'],
+  ['summary', 'Vue système'], ['cpu', 'CPU'], ['gpu', 'GPU'], ['ram', 'Mémoire'], ['disk', 'Disques'], ['processes', 'Processus'],
 ]
 
 function Processes({ items, busy, run }: { items: HubProcess[]; busy: boolean; run: HubPageProps['run'] }) {
@@ -230,14 +243,11 @@ export function SystemPage({ status, data, run, busy, setProcessView, target }: 
   const [view, setView] = useState<SystemView>(target === 'cpu' ? 'cpu' : 'summary')
   useEffect(() => { if (target === 'cpu') { setView('cpu'); setProcessView?.(false) } }, [target])
   const options = data?.tools.system ?? defaultHubOptions('system')
-  const optionsNetwork = data?.tools.network ?? defaultHubOptions('network')
   const metrics = status.metrics
   return <>
     <TabButtons label="Ressources système" choices={systemViews} active={view} select={next => { setView(next); setProcessView?.(next === 'processes') }} />
-    {view === 'network' ? <NetworkReadings metrics={metrics} options={optionsNetwork} /> :
-      view === 'processes' ? <Processes items={metrics?.processes ?? []} busy={busy} run={run} /> :
-      <Hardware view={view} metrics={metrics} history={options.history} />}
-    <HubForm tool="system" options={options} key={JSON.stringify(options)} run={run} busy={busy}>
+    <MonitorSettings label="Mesures et indicateurs">
+    <HubForm compact tool="system" options={options} key={JSON.stringify(options)} run={run} busy={busy}>
       {(draft, patch) => <>
         <div className="hub-form-grid">
           <NumberField label="Actualisation (s)" min={1} max={60} value={draft.seconds} onChange={seconds => patch({ seconds })} />
@@ -249,12 +259,14 @@ export function SystemPage({ status, data, run, busy, setProcessView, target }: 
               onChange={value => patch({ trayMetrics: value ? [...draft.trayMetrics, metric] : draft.trayMetrics.filter(item => item !== metric) })} />)}
         </fieldset>
         {draft.trayMetrics.length > 0 && <>
-          <Field label="Couleur de l’indicateur"><input type="color" value={draft.color}
-            onChange={event => patch({ color: event.currentTarget.value })} /></Field>
+          <ColorField label="Couleur de l’indicateur" value={draft.color} onChange={color => patch({ color })} />
           <Flag label="Alerte de seuil" value={draft.alerts} onChange={alerts => patch({ alerts })} />
           {draft.alerts && <NumberField label="Seuil (%)" min={1} max={100} value={draft.threshold} onChange={threshold => patch({ threshold })} />}
         </>}
       </>}
     </HubForm>
+    </MonitorSettings>
+    {view === 'processes' ? <Processes items={metrics?.processes ?? []} busy={busy} run={run} /> :
+      <Hardware view={view} metrics={metrics} history={options.history} />}
   </>
 }

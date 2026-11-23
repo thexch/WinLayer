@@ -1,3 +1,4 @@
+using WinLayer.Desktop;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using WinLayer.Core;
@@ -128,8 +129,7 @@ internal static class UtilityCapture
             AccessibleName = "Texte reconnu et modifiable", BackColor = UtilityWindows.Surface, ForeColor = UtilityWindows.Ink, BorderStyle = BorderStyle.FixedSingle };
         var toolbar = UtilityWindows.Toolbar();
         var feedback = new Label { Dock = DockStyle.Bottom, Height = 38, Padding = new Padding(12, 8, 0, 0), ForeColor = UtilityWindows.Ink };
-        var languages = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Langue", Width = 110 };
-        languages.Items.AddRange(["Français", "English"]);
+        var languages = new UtilityChoice("Langue", ["Français", "English"]) { Width = 115 };
         languages.SelectedIndex = language == "fr" ? 0 : 1;
         var retry = UtilityWindows.Button("Reconnaître", () => { });
         retry.Click += async (_, _) => await RecognizeAsync();
@@ -192,11 +192,85 @@ internal static class UtilityCapture
 internal static class UtilityWindows
 {
     internal static AppTheme? Theme { get; set; }
-    internal static Color Canvas => Theme is { } theme ? ColorTranslator.FromHtml(theme.Canvas) : Color.FromArgb(20, 23, 43);
-    internal static Color Surface => Theme is { } theme ? ColorTranslator.FromHtml(theme.Surface) : Color.FromArgb(37, 38, 66);
-    internal static Color Ink => Theme is { } theme ? ColorTranslator.FromHtml(theme.Ink) : Color.FromArgb(242, 237, 255);
-    internal static Color Accent => Theme is { } theme ? ColorTranslator.FromHtml(theme.Accent) : Color.FromArgb(187, 170, 255);
-    internal static Color Border => Theme is { } theme ? ColorTranslator.FromHtml(theme.Border) : Color.FromArgb(78, 72, 115);
+    internal static WinLayer.Core.Appearance Appearance { get; set; }
+    internal static bool Dark => Theme is { } theme ? ColorTranslator.FromHtml(theme.Canvas).GetBrightness() < 0.5f : CaptionTheme.IsDark(Appearance);
+    internal static Color Canvas => ColorFor(Theme?.Canvas, 0x14172B, 0xF4F5FC, SystemColors.Window);
+    internal static Color Surface => ColorFor(Theme?.Surface, 0x252642, 0xFCFCFF, SystemColors.Window);
+    internal static Color Ink => ColorFor(Theme?.Ink, 0xF2EDFF, 0x191D34, SystemColors.WindowText);
+    internal static Color Accent => ColorFor(Theme?.Accent, 0xBBAAFF, 0x4B40AB, SystemColors.WindowText);
+    internal static Color Border => ColorFor(Theme?.Border, 0x4E4873, 0xDCE0EE, SystemColors.WindowText);
+
+    private static Color ColorFor(string? html, int dark, int light, Color contrast) => SystemInformation.HighContrast
+        ? contrast : html is not null ? ColorTranslator.FromHtml(html) : Color.FromArgb(unchecked((int)0xFF000000) | (Dark ? dark : light));
+
+    internal static void Style(Form form)
+    {
+        form.HandleCreated += (_, _) => CaptionTheme.Apply(form.Handle, Appearance, Theme);
+        form.Load += (_, _) => StyleControls(form);
+    }
+
+    private static void StyleControls(Control root)
+    {
+        foreach (Control control in root.Controls)
+        {
+            if (control is TextBoxBase or ListBox or ListView or NumericUpDown or TrackBar or ScrollableControl)
+            {
+                CaptionTheme.ThemeControl(control.Handle, Dark);
+                if (control is TextBoxBase or NumericUpDown)
+                {
+                    control.BackColor = Surface;
+                    control.ForeColor = Ink;
+                }
+            }
+            if (control.HasChildren) StyleControls(control);
+        }
+    }
+
+    internal static void ConfirmMessage(string title, string message, IWin32Window? owner = null)
+        => ShowPrompt(title, message, null, owner);
+
+    internal static bool Confirm(string title, string message, string action, IWin32Window? owner = null)
+        => ShowPrompt(title, message, action, owner) == DialogResult.OK;
+
+    private static DialogResult ShowPrompt(string title, string message, string? action, IWin32Window? owner)
+    {
+        using var form = Create(title, new Size(510, 220));
+        form.FormBorderStyle = FormBorderStyle.FixedDialog;
+        form.MaximizeBox = false;
+        form.MinimizeBox = false;
+        if (owner is not null) form.StartPosition = FormStartPosition.CenterParent;
+        var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true };
+        content.Controls.Add(new Label { Text = message, AutoSize = true, MaximumSize = new Size(440, 0), Dock = DockStyle.Top });
+        var actions = Toolbar();
+        actions.Dock = DockStyle.Bottom;
+        actions.FlowDirection = FlowDirection.RightToLeft;
+        var cancel = Button(action is null ? "Fermer" : "Annuler", () => form.DialogResult = DialogResult.Cancel);
+        cancel.DialogResult = DialogResult.Cancel;
+        actions.Controls.Add(cancel);
+        form.CancelButton = cancel;
+        form.AcceptButton = cancel;
+        if (action is not null)
+            actions.Controls.Add(Button(action, () => form.DialogResult = DialogResult.OK));
+        form.Controls.Add(content);
+        form.Controls.Add(actions);
+        form.ActiveControl = cancel;
+        return owner is null ? form.ShowDialog() : form.ShowDialog(owner);
+    }
+
+    public static ToolStripRenderer MenuRenderer() => new ToolStripProfessionalRenderer(new MenuColors());
+
+    private sealed class MenuColors : ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground => Surface;
+        public override Color ImageMarginGradientBegin => Surface;
+        public override Color ImageMarginGradientMiddle => Surface;
+        public override Color ImageMarginGradientEnd => Surface;
+        public override Color MenuBorder => Border;
+        public override Color MenuItemBorder => Border;
+        public override Color MenuItemSelected => Canvas;
+        public override Color SeparatorDark => Border;
+        public override Color SeparatorLight => Border;
+    }
 
     public static Form Create(string title, Size size)
     {
@@ -204,6 +278,7 @@ internal static class UtilityWindows
             TopMost = true, ShowInTaskbar = false, StartPosition = FormStartPosition.CenterScreen,
             Font = SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, BackColor = Canvas, ForeColor = Ink, KeyPreview = true };
         form.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) form.Close(); };
+        Style(form);
         return form;
     }
 
@@ -219,7 +294,7 @@ internal static class UtilityWindows
             catch (Exception error)
             {
                 WindowsSettings.Log("Action de l’utilitaire.", error);
-                MessageBox.Show(button.FindForm(), "L’action n’a pas pu être terminée. Consultez le journal WinLayer.", "WinLayer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ConfirmMessage("Action indisponible", "L’action n’a pas pu être terminée. Consultez le journal WinLayer.", button.FindForm());
             }
         };
         return button;

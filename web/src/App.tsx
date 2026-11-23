@@ -6,34 +6,41 @@ import {
 import type { AgentStatus, Appearance, BatteryDevice, BatteryOptions, Page, Preferences } from './bridge'
 import { AutoClickerPage } from './AutoClickerPage'
 import { TabButtons } from './HubControls'
-import { MacroPage, PinPage, RepeaterPage, ScreenToolsPage, SwitcherPage, TaskbarPage } from './HubTools'
+import { MacroPage, PinPage, RepeaterPage, ScreenToolsPage, SwitcherPage, TaskbarPage, type ScreenTool } from './HubTools'
 import { NetworkPage, SystemPage } from './HubMonitor'
 import type { HubRequest } from './hub'
 import { Range, Switch } from './controls'
 import { useAgent } from './useAgent'
-import { ActionSearch, EntryIcon, ScreenUtilities, UtilitiesPage } from './UtilitiesPage'
+import { ActionSearch, EntryIcon, ScreenUtilities, UtilitiesPage, utilitySectionFor, type UtilitySection } from './UtilitiesPage'
 import { defaults, entries, luminance, type AppTheme, type Entry, type UtilityRequest } from './utility'
 import appIcon from '../../src/WinLayer.Agent/WinLayer.ico'
 
 const navigation = [
-  { id: 'dashboard', label: 'Vue d’ensemble', Icon: LayoutGrid },
-  { id: 'battery', label: 'Périphériques', Icon: BatteryCharging },
-  { id: 'autoClicker', label: 'Auto Clicker', Icon: MousePointerClick },
-  { id: 'macro', label: 'Macro Recorder', Icon: Workflow },
-  { id: 'screen', label: 'Screen Tools', Icon: Crosshair },
-  { id: 'taskbar', label: 'Taskbar Studio', Icon: Layers },
-  { id: 'switcher', label: 'Alt-Tab Customizer', Icon: ScanLine },
-  { id: 'pin', label: 'Always on Top', Icon: Pin },
-  { id: 'network', label: 'Network Monitor', Icon: Radio },
-  { id: 'system', label: 'System Tray Monitor', Icon: Cpu },
-  { id: 'utilities', label: 'Utilitaires', Icon: Wrench },
-  { id: 'general', label: 'Général', Icon: Settings2 },
-  { id: 'updates', label: 'Mises à jour', Icon: ArrowDownToLine },
+  { links: [{ id: 'dashboard', label: 'Vue d’ensemble', Icon: LayoutGrid }] },
+  { label: 'Surveillance', links: [
+    { id: 'battery', label: 'Périphériques', Icon: BatteryCharging },
+    { id: 'system', label: 'System Tray Monitor', Icon: Cpu },
+    { id: 'network', label: 'Network Monitor', Icon: Radio },
+  ] },
+  { label: 'Automatisation', links: [
+    { id: 'autoClicker', label: 'Auto Clicker', Icon: MousePointerClick },
+    { id: 'macro', label: 'Macro Recorder', Icon: Workflow },
+  ] },
+  { label: 'Bureau', links: [
+    { id: 'screen', label: 'Screen Tools', Icon: Crosshair },
+    { id: 'switcher', label: 'Alt-Tab Customizer', Icon: ScanLine },
+    { id: 'pin', label: 'Always on Top', Icon: Pin },
+    { id: 'taskbar', label: 'Taskbar Studio', Icon: Layers },
+    { id: 'utilities', label: 'Utilitaires', Icon: Wrench },
+  ] },
+  { label: 'WinLayer', links: [
+    { id: 'general', label: 'Général', Icon: Settings2 },
+    { id: 'updates', label: 'Mises à jour', Icon: ArrowDownToLine },
+  ] },
 ] as const
 
 const hubPages = {
   macro: [MacroPage, 'Macro Recorder', 'Enregistrez, éditez et rejouez vos séquences locales.'],
-  screen: [ScreenToolsPage, 'Screen Tools', 'Prélevez les couleurs et mesurez les pixels du bureau.'],
   taskbar: [TaskbarPage, 'Taskbar Studio', 'Compose un style, prévisualise-le et applique-le à la barre des tâches.'],
   switcher: [SwitcherPage, 'Alt-Tab Customizer', 'Recherche une fenêtre ouverte et retrouve-la grâce à son aperçu.'],
   pin: [PinPage, 'Always on Top', 'Gardez les fenêtres de votre choix au premier plan.'],
@@ -71,12 +78,15 @@ function Sidebar({ selection, go, connection, version, search }: {
     <Brand />
     {search}
     <nav aria-label="Réglages">
-      {navigation.map(({ id, label, Icon }) =>
-        <button type="button" key={id} aria-label={label} aria-current={selection === id ? 'page' : undefined}
-          className="nav-link" onClick={() => go(id)}>
-          <Icon size={19} aria-hidden="true" /><span>{label}</span>
-        </button>
-      )}
+      {navigation.map(group => <div className="nav-group" key={group.links[0].id}>
+        {'label' in group && <div className="nav-group-label">{group.label}</div>}
+        {group.links.map(({ id, label, Icon }) =>
+          <button type="button" key={id} aria-label={label} title={label} aria-current={selection === id ? 'page' : undefined}
+            className="nav-link" onClick={() => go(id)}>
+            <Icon size={19} aria-hidden="true" /><span>{label}</span>
+          </button>
+        )}
+      </div>)}
     </nav>
     <div className="sidebar-foot">
       <span className={connection === 'opening' ? 'connection-ring' : `presence-dot ${connection}`} aria-hidden="true" />
@@ -225,15 +235,18 @@ const themeChoices = [
   { id: 'dark', Icon: Moon },
 ] as const
 
-function GeneralForm({ preferences, canEdit, onSave, onPreview }: {
+type GeneralSection = 'preferences' | 'appearance' | 'profiles'
+
+function GeneralForm({ preferences, canEdit, onSave, onPreview, appearanceOnly }: {
   preferences: Preferences; canEdit: boolean; onSave: (preferences: Preferences) => void; onPreview: (appearance: Appearance) => void
+  appearanceOnly: boolean
 }) {
   const [draft, setDraft] = useState(preferences)
   const changed = draft.appearance !== preferences.appearance || draft.startWithWindows !== preferences.startWithWindows ||
     draft.automaticUpdateChecks !== preferences.automaticUpdateChecks
   return <form className="preferences-form" onSubmit={(event) => { event.preventDefault(); if (changed) onSave(draft) }}>
-    <fieldset disabled={!canEdit}>
-      <legend>Apparence</legend>
+    {appearanceOnly ? <fieldset disabled={!canEdit}>
+      <legend>Thème de base</legend>
       <p className="fine">Choisissez le thème de la fenêtre de réglages.</p>
       <div className="theme-picker">
         {themeChoices.map(({ id, Icon }) => <label key={id} className="theme-option">
@@ -244,16 +257,15 @@ function GeneralForm({ preferences, canEdit, onSave, onPreview }: {
           <Icon size={19} aria-hidden="true" /><span>{appearanceNames[id]}</span>
         </label>)}
       </div>
-    </fieldset>
-    <fieldset disabled={!canEdit}>
+    </fieldset> : <fieldset disabled={!canEdit}>
       <legend>Exécution en arrière-plan</legend>
       <Switch checked={draft.startWithWindows} label="Démarrer avec Windows"
         description="L’agent démarre à l’ouverture de la session." onChange={(startWithWindows) => setDraft({ ...draft, startWithWindows })} />
       <Switch checked={draft.automaticUpdateChecks} label="Rechercher automatiquement les mises à jour"
         description="Recevez une notification lorsqu’une version stable est disponible."
         onChange={(automaticUpdateChecks) => setDraft({ ...draft, automaticUpdateChecks })} />
-      <button className="button primary" disabled={!changed}>Enregistrer les préférences</button>
-    </fieldset>
+    </fieldset>}
+    <button className="button primary" disabled={!canEdit || !changed}>Enregistrer les préférences</button>
   </form>
 }
 
@@ -302,6 +314,9 @@ function UpdatePage({ status, canEdit, onCheck, onInstall, downloading, progress
 
 export function App() {
   const { status, page, requestedTarget, connection, feedback, busy, downloadProgress, go, act, setProcessView } = useAgent()
+  const [generalSection, setGeneralSection] = useState<GeneralSection>('preferences')
+  const [screenTool, setScreenTool] = useState<ScreenTool>('picker')
+  const [utilitySection, setUtilitySection] = useState<UtilitySection>('files')
   const [automation, setAutomation] = useState<'clicker' | 'repeater'>('clicker')
   const [preview, setPreview] = useState<Appearance>()
   const [themePreview, setThemePreview] = useState<AppTheme>()
@@ -320,7 +335,7 @@ export function App() {
   }))]
   const favorites = utilityOptions.favorites.flatMap(id => items.find(item => item.id === id) ?? [])
   const selectedTheme = utilityOptions.themes.find(theme => theme.name === utilityOptions.theme)
-  const theme = page === 'utilities' && themePreview ? themePreview : page === 'general' && preview ? undefined : selectedTheme
+  const theme = page === 'general' && themePreview ? themePreview : page === 'general' && preview ? undefined : selectedTheme
   const canEdit = connection === 'connected' && busy === null
   const appearance = page === 'general' && preview ? preview : preferences?.appearance ?? 'system'
 
@@ -370,6 +385,10 @@ export function App() {
     setLocalTarget(undefined)
     if (requestedTarget?.id === 'repeat') setAutomation('repeater')
     if (requestedTarget?.id === 'clickerSpeed') setAutomation('clicker')
+    if (requestedTarget?.id === 'ocrLanguage') setScreenTool('captures')
+    const section = utilitySectionFor(requestedTarget?.id)
+    if (section === 'appearance' || section === 'profiles') setGeneralSection(section)
+    else if (section) setUtilitySection(section)
   }, [requestedTarget])
   useEffect(() => { main.current?.scrollTo({ top: 0 }) }, [page])
 
@@ -399,6 +418,10 @@ export function App() {
     if (item.page) {
       navigate(item.page)
       if (item.target === 'repeat' || item.target === 'clickerSpeed') setAutomation(item.target === 'repeat' ? 'repeater' : 'clicker')
+      if (item.target === 'ocrLanguage') setScreenTool('captures')
+      const section = utilitySectionFor(item.target)
+      if (section === 'appearance' || section === 'profiles') setGeneralSection(section)
+      else if (section) setUtilitySection(section)
       setLocalTarget(item.target ? { id: item.target } : undefined)
     } else if (canEdit) {
       void runUtility({ action: 'execute', id: item.id })
@@ -471,18 +494,29 @@ export function App() {
             <Header title={hubPage[1]} description={hubPage[2]} />
             {Module && hubProps ? <Module {...hubProps} /> : <p className="fine">En attente de l’agent WinLayer.</p>}
           </>}
-          {page === 'screen' && <ScreenUtilities key={utilityKey} options={utilityOptions} canEdit={canEdit} run={runUtility} />}
+          {page === 'screen' && <>
+            <Header title="Screen Tools" description="Prélevez une couleur, mesurez le bureau ou capturez une zone." />
+            {hubProps && <ScreenToolsPage {...hubProps} active={screenTool} select={setScreenTool}
+              captures={<ScreenUtilities key={utilityKey} options={utilityOptions} canEdit={canEdit} run={runUtility} />} />}
+          </>}
           {page === 'utilities' && <>
             <Header title="Utilitaires" description="Lancez vos outils et personnalisez les raccourcis de votre bureau." />
             {status?.utilities?.error && <p className="notice" role="status">{status.utilities.error}</p>}
             <UtilitiesPage key={utilityKey} options={utilityOptions} items={items} canEdit={canEdit}
-              undo={status?.utilities?.undo} run={runUtility} preview={setThemePreview} />
+              run={runUtility} preview={setThemePreview} section={utilitySection} selectSection={setUtilitySection} />
           </>}
           {page === 'general' && <>
             <Header title="Général" description="Personnalisez l’apparence et le démarrage de WinLayer." />
-            {preferences ? <GeneralForm key={`${preferences.appearance}/${preferences.startWithWindows}/${preferences.automaticUpdateChecks}`}
-              preferences={preferences} canEdit={canEdit} onSave={save} onPreview={setPreview} /> :
-              <p className="fine">Les préférences apparaîtront quand l’agent répondra.</p>}
+            <TabButtons label="Préférences WinLayer" choices={[[ 'preferences', 'Préférences' ], [ 'appearance', 'Apparence' ], [ 'profiles', 'Profils et restauration' ]]}
+              active={generalSection} select={next => { setPreview(undefined); setThemePreview(undefined); setGeneralSection(next) }} />
+            {generalSection !== 'profiles' && (preferences ? <GeneralForm
+              key={`${generalSection}/${preferences.appearance}/${preferences.startWithWindows}/${preferences.automaticUpdateChecks}`}
+              appearanceOnly={generalSection === 'appearance'} preferences={preferences} canEdit={canEdit} onSave={save} onPreview={value => {
+                setThemePreview(undefined)
+                setPreview(value)
+              }} /> : <p className="fine">Les préférences apparaîtront quand l’agent répondra.</p>)}
+            {generalSection !== 'preferences' && <UtilitiesPage key={`${generalSection}/${utilityKey}`} options={utilityOptions} items={items}
+              canEdit={canEdit} undo={status?.utilities?.undo} run={runUtility} preview={setThemePreview} section={generalSection} />}
           </>}
           {page === 'updates' && <UpdatePage status={status} canEdit={canEdit} downloading={busy === 'installUpdate'} progress={downloadProgress}
             onCheck={() => { void act({ action: 'checkUpdates' }, 'Recherche de mises à jour…') }}

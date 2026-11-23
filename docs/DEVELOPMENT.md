@@ -109,3 +109,9 @@ Utiliser l’installateur de CI sur Windows 11. Tester avec la fenêtre des para
 Mesurer le CPU, la RAM et le démarrage avec `scripts/Measure-WinLayer.ps1`. Comparer le repos après fermeture des réglages à une session avec coins actifs et indicateurs clavier. Attendre que les overlays soient fermés et répéter avec plusieurs écrans. Le suivi des coins utilise un timer seulement quand un coin est configuré. L’OSD utilise Raw Input seulement quand au moins un indicateur est activé. L’OCR et la conversion travaillent à la demande.
 
 La version actuelle propose un profil radial actif sélectionné dans l’éditeur, des réglages de coins communs aux écrans, et l’ouverture du panier par action ou raccourci. Elle exporte les images sans métadonnées et utilise la qualité réglable pour JPEG. Le thème change les pictogrammes du hub et les outils natifs rouverts. Les icônes Windows de l’exécutable et de l’installation suivent les ressources du paquet.
+
+## Navigation et thèmes des fenêtres
+
+Le réseau a sa propre page et les mesures matérielles restent dans System Tray Monitor. Ouvrir **Réglages du réseau** ou **Mesures et indicateurs** montre les paramètres près des relevés. Dans **Screen Tools**, les raccourcis de capture se trouvent avec l’OCR. Dans **Utilitaires** et **Général**, vérifier que la recherche arrive dans la bonne catégorie et que les modifications en attente restent accessibles lorsque l’on change de catégorie.
+
+Tester les listes et les palettes de couleur avec Tab, les flèches et Échap. Sur Windows 11, ouvrir Drop Shelf, la palette, Image Converter, l’historique OCR, le sélecteur de fenêtres et l’enregistreur de macros. Contrôler le cadre, la fermeture, les listes et la lecture de longues listes de résultats en thème clair, sombre, personnalisé et en contraste élevé. Les dialogues de fichiers et les fenêtres de sécurité Windows sont affichés par le système.

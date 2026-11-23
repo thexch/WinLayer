@@ -125,8 +125,7 @@ internal sealed partial class WindowsUtilities(GlobalHotkeys hotkeys, WindowsHub
                 case "ocrHistory": ShowOcrHistory(); break;
                 case "desktop": RunShellCommand("ToggleDesktop"); break;
                 case "lock":
-                    if (MessageBox.Show("Verrouiller votre session Windows ?", "WinLayer", MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                    if (UtilityWindows.Confirm("Verrouiller Windows", "Verrouiller votre session Windows ?", "Verrouiller"))
                         if (LockWorkStation() == 0) throw new InvalidOperationException("Windows n’a pas pu verrouiller la session.");
                     break;
                 case "local": Launch(_options.Launchers.Single(item => item.Id == id)); break;
@@ -257,8 +256,7 @@ internal sealed partial class WindowsUtilities(GlobalHotkeys hotkeys, WindowsHub
             UtilityWindows.Button("Copier", () => { if (text.TextLength > 0) Clipboard.SetText(text.Text); }),
             UtilityWindows.Button("Effacer l’historique", () =>
             {
-                if (MessageBox.Show(form, "Effacer le texte de toutes les captures conservées ?", "Screen OCR",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                if (!UtilityWindows.Confirm("Historique Screen OCR", "Effacer le texte de toutes les captures conservées ?", "Effacer", form)) return;
                 File.Delete(HistoryPath);
                 File.Delete(HistoryPath + ".tmp");
                 history = [];
@@ -295,8 +293,7 @@ internal sealed partial class WindowsUtilities(GlobalHotkeys hotkeys, WindowsHub
             var extension = Path.GetExtension(path).ToLowerInvariant();
             if (extension is not (".exe" or ".txt" or ".pdf" or ".png" or ".jpg" or ".jpeg" or ".bmp" or ".webp"))
                 throw new InvalidOperationException("Ce type de fichier ne peut pas être ouvert depuis WinLayer.");
-            if (extension == ".exe" && MessageBox.Show($"Ouvrir cette application ?{Environment.NewLine}{path}", item.Label,
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (extension == ".exe" && !UtilityWindows.Confirm(item.Label, $"Ouvrir cette application ?{Environment.NewLine}{path}", "Ouvrir")) return;
         }
 
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
@@ -512,8 +509,13 @@ internal sealed class RadialOverlay : HubOverlay
             Controls.Add(button);
             return button;
         }).ToArray();
-        Controls.Add(new Label { Text = "WinLayer", TextAlign = ContentAlignment.MiddleCenter, ForeColor = _accent,
-            Size = new Size(108, 54), Location = new Point(151, 178) });
+        var close = UtilityWindows.Button("×", Close);
+        close.AccessibleName = "Fermer le menu radial";
+        close.AutoSize = false;
+        close.Size = new Size(36, 36);
+        close.Location = new Point((Width - close.Width) / 2, (Height - close.Height) / 2);
+        close.TabIndex = _buttons.Length;
+        Controls.Add(close);
         Shown += (_, _) => UtilityWindows.FadeIn(this, 1);
     }
 

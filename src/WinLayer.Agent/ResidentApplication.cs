@@ -78,7 +78,14 @@ internal sealed class ResidentApplication : ApplicationContext
         _menu.Items.Add(_statusMenu);
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("Quitter WinLayer", null, async (_, _) => await StopAsync());
-        _menu.Opening += (_, _) => UpdateMenu();
+        _menu.Renderer = UtilityWindows.MenuRenderer();
+        _menu.Opening += (_, _) =>
+        {
+            _menu.BackColor = UtilityWindows.Surface;
+            _menu.ForeColor = UtilityWindows.Ink;
+            foreach (ToolStripItem item in _menu.Items) item.ForeColor = UtilityWindows.Ink;
+            UpdateMenu();
+        };
         _tray = new NotifyIcon { Text = "WinLayer", Icon = _icon, ContextMenuStrip = _menu, Visible = true };
         _tray.MouseClick += (_, e) =>
         {
@@ -134,6 +141,7 @@ internal sealed class ResidentApplication : ApplicationContext
                 _clicker.Prune();
             }
 
+            UtilityWindows.Appearance = _preferences.Appearance;
             _hub.Initialize(_preferences.Hub ?? new());
             _utilities.Initialize(_preferences.Utilities ?? new());
             await _battery.ApplyAsync(_preferences.Battery);
@@ -318,6 +326,7 @@ internal sealed class ResidentApplication : ApplicationContext
         }
 
         _preferences = preferences;
+        UtilityWindows.Appearance = preferences.Appearance;
         _error = null;
         await _battery.ApplyAsync(preferences.Battery);
         UpdateBatteryTray();
@@ -371,10 +380,9 @@ internal sealed class ResidentApplication : ApplicationContext
                 using var input = new FileStream(dialog.FileName, FileMode.Open, FileAccess.Read, FileShare.Read);
                 var options = input.Length <= 32_768 ? await JsonSerializer.DeserializeAsync<UtilityOptions>(input, format, _stop.Token) : null;
                 if (options?.IsValid() != true) throw new InvalidDataException("Ce profil WinLayer est invalide.");
-                if (MessageBox.Show("Remplacer les réglages des utilitaires, les favoris et les thèmes par ce profil ?", "Restaurer un profil WinLayer",
-                    MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+                if (!UtilityWindows.Confirm("Restaurer un profil", "Remplacer les réglages des utilitaires, les favoris et les thèmes par ce profil ?", "Restaurer")) return;
                 await SaveUtilitiesAsync(options);
-                Notify("WinLayer", "Profil restauré.", Page.Utilities);
+                Notify("WinLayer", "Profil restauré.", Page.General);
             }
             else
             {
@@ -387,7 +395,7 @@ internal sealed class ResidentApplication : ApplicationContext
         {
             if (_quitting) return;
             WindowsSettings.Log("Profil WinLayer.", error);
-            Notify("Profil WinLayer", error is InvalidDataException or InvalidOperationException ? error.Message : "Impossible de lire ou d’écrire ce profil.", Page.Utilities);
+            Notify("Profil WinLayer", error is InvalidDataException or InvalidOperationException ? error.Message : "Impossible de lire ou d’écrire ce profil.", Page.General);
         }
     }
 
@@ -435,6 +443,7 @@ internal sealed class ResidentApplication : ApplicationContext
             await _store.SaveAsync(wanted, _stop.Token);
             if (_quitting) return;
             _preferences = wanted;
+            UtilityWindows.Appearance = wanted.Appearance;
             if (options is not null) _utilities.Apply(options);
             if (tool) _hub.Apply(HubTool.Taskbar, wanted.Hub!);
         }

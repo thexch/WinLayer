@@ -1,4 +1,5 @@
-import { useState, type CSSProperties } from 'react'
+import { ColorField } from './ColorField'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Crosshair, Download, Folder, LayoutGrid, Monitor, MousePointer2, Play, Plus, Search, Square, Trash2 } from 'lucide-react'
 import { Accent, Choice, Field, Flag, Hotkey, HubForm, NumberField, TabButtons, type RunHub } from './HubControls'
 import { defaultHubOptions, virtualKeys, type HubOptions, type HubPreferences, type HubStatus, type HubTool,
@@ -48,7 +49,7 @@ export function TaskbarPage({ data, status, run, busy, target }: HubPageProps) {
         {(draft.taskbarEffect !== 'windows' || target === 'taskbarOpacity') && <>
           <p className="fine">WinLayer dessine cet effet sur la barre principale. Clique sur Appliquer pour le voir sur ton bureau.</p>
           <div className="hub-form-grid">
-            <Field label="Couleur"><input type="color" value={draft.color} onChange={event => patch({ color: event.currentTarget.value })} /></Field>
+            <ColorField label="Couleur" value={draft.color} onChange={color => patch({ color })} />
             <div id="taskbarOpacity"><NumberField label="Opacité (%)" value={draft.opacity} min={5} max={draft.taskbarEffect === 'tint' ? 35 : 100} onChange={opacity => patch({ opacity, taskbarEffect: draft.taskbarEffect === 'windows' ? 'accent' : draft.taskbarEffect })} /></div>
             {draft.taskbarEffect !== 'tint' &&
               <NumberField label="Épaisseur (px)" value={draft.size} min={1} max={24} onChange={size => patch({ size })} />}
@@ -89,8 +90,7 @@ export function SwitcherPage({ data, status, run, busy }: HubPageProps) {
           onChange={layout => patch({ layout })} />
         <div className="hub-form-grid">
           <NumberField label="Largeur (px)" value={draft.width} min={420} max={1000} onChange={width => patch({ width })} />
-          <Field label="Couleur d’accent"><input type="color" value={draft.color}
-            onChange={event => patch({ color: event.currentTarget.value })} /></Field>
+          <ColorField label="Couleur d’accent" value={draft.color} onChange={color => patch({ color })} />
         </div>
         <Field label="Applications exclues"><input maxLength={512} placeholder="explorer, notepad" value={draft.exclusions}
           onChange={event => patch({ exclusions: event.currentTarget.value })} /></Field>
@@ -140,9 +140,12 @@ export function RepeaterPage({ data, status, run, busy }: HubPageProps) {
   </>
 }
 
-export function ScreenToolsPage(props: HubPageProps) {
-  const [tool, setTool] = useState<'picker' | 'ruler'>('picker')
-  const { data, status, run, busy } = props
+export type ScreenTool = 'picker' | 'ruler' | 'captures'
+
+export function ScreenToolsPage({ data, status, run, busy, active, select, captures }: HubPageProps & {
+  active: ScreenTool; select: (tool: ScreenTool) => void; captures: ReactNode
+}) {
+  const tool = active === 'captures' ? 'picker' : active
   const [palette, setPalette] = useState('')
   const options = useOptions(tool, data)
   const history = data?.colors ?? []
@@ -150,7 +153,9 @@ export function ScreenToolsPage(props: HubPageProps) {
   const [shownPalette, setShownPalette] = useState('')
   const shown = options.palettes.find(item => item.name === shownPalette)?.colors ?? []
   return <>
-    <TabButtons label="Outils d’écran" choices={[[ 'picker', 'Color Picker' ], [ 'ruler', 'Screen Ruler' ]]} active={tool} select={setTool} />
+    <TabButtons label="Outils d’écran" choices={[[ 'picker', 'Color Picker' ], [ 'ruler', 'Screen Ruler' ], [ 'captures', 'Captures et OCR' ]]}
+      active={active} select={select} />
+    {active === 'captures' ? captures : <>
     <ToolFeedback tool={tool} status={status} />
     <HubForm tool={tool} key={`${tool}/${JSON.stringify(options)}`} options={options} run={run} busy={busy}
       extra={<><button className="button primary" type="button" disabled={busy}
@@ -206,6 +211,7 @@ export function ScreenToolsPage(props: HubPageProps) {
         </li>)}
       </ul>
     </section>}
+    </>}
   </>
 }
 

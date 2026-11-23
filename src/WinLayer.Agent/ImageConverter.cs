@@ -31,11 +31,8 @@ internal static class ImageConverter
             }
             catch (Exception error) { WindowsSettings.Log("Aperçu d’image.", error); }
         };
-        var formats = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Format de sortie", Width = 80 };
-        formats.Items.AddRange(["PNG", "JPEG", "BMP"]);
         var webp = BitmapEncoder.GetEncoderInformationEnumerator().FirstOrDefault(info => info.FileExtensions.Contains(".webp", StringComparer.OrdinalIgnoreCase));
-        if (webp is not null) formats.Items.Add("WebP");
-        formats.SelectedIndex = 0;
+        var formats = new UtilityChoice("Format de sortie", webp is null ? ["PNG", "JPEG", "BMP"] : ["PNG", "JPEG", "BMP", "WebP"]) { Width = 88 };
         var width = new NumericUpDown { AccessibleName = "Largeur en pixels, 0 conserve le rapport", Maximum = 8192, Width = 65 };
         var height = new NumericUpDown { AccessibleName = "Hauteur en pixels, 0 conserve le rapport", Maximum = 8192, Width = 65 };
         var keepRatio = new CheckBox { Text = "Proportions", AutoSize = true, Checked = true };
@@ -83,7 +80,7 @@ internal static class ImageConverter
             cancellation = job;
             var paths = files.Items.Cast<string>().ToArray();
             var output = folder.SelectedPath;
-            var format = (string)formats.SelectedItem!;
+            var format = formats.SelectedValue;
             var w = (int)width.Value;
             var h = (int)height.Value;
             var ratio = keepRatio.Checked;

@@ -1,3 +1,4 @@
+using WinLayer.Desktop;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Runtime.InteropServices;
@@ -24,6 +25,7 @@ internal sealed class SettingsWindow : Form
     private bool _receiving;
     private bool _closed;
     private Appearance _captionAppearance;
+    private AppTheme? _captionTheme;
     private FormWindowState _lastVisibleState = FormWindowState.Maximized;
 
     public SettingsWindow()
@@ -83,8 +85,7 @@ internal sealed class SettingsWindow : Form
 
             if (_openingStatus is { IsCompletedSuccessfully: true } && _openingStatus.Result?.Status is { } initial)
             {
-                _captionAppearance = initial.Preferences.Appearance;
-                ApplyAppearance();
+                SetAppearance(initial.Preferences);
             }
             var core = _browser.CoreWebView2;
             core.Settings.AreHostObjectsAllowed = false;
@@ -167,10 +168,19 @@ internal sealed class SettingsWindow : Form
             : null, RequestsOverlay(request) ? GrantAgentFocus : null);
     }
 
+    private void SetAppearance(Preferences preferences)
+    {
+        var theme = preferences.Utilities?.Themes.FirstOrDefault(item => item.Name == preferences.Utilities.Theme);
+        if (_captionAppearance == preferences.Appearance && _captionTheme == theme) return;
+        _captionAppearance = preferences.Appearance;
+        _captionTheme = theme;
+        ApplyAppearance();
+    }
+
     private void ApplyAppearance()
     {
         if (IsHandleCreated)
-            CaptionTheme.Apply(Handle, _captionAppearance);
+            CaptionTheme.Apply(Handle, _captionAppearance, _captionTheme);
         _loading.ApplyTheme(_captionAppearance);
         BackColor = _loading.BackColor;
         if (!_closed)
@@ -245,11 +255,7 @@ internal sealed class SettingsWindow : Form
             if (response.Status is { } status)
             {
                 ActivateForNavigation(status.NavigationRevision);
-                if (_captionAppearance != status.Preferences.Appearance)
-                {
-                    _captionAppearance = status.Preferences.Appearance;
-                    ApplyAppearance();
-                }
+                SetAppearance(status.Preferences);
             }
 
             if (Reply(id, response) && request.Command == Command.InstallUpdate &&
