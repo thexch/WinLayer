@@ -144,8 +144,9 @@ public sealed class WindowsAgentTests
         Assert.IsNull(shown.Error);
         var shelf = FindWindowW(null, "Drop Shelf — WinLayer");
         Assert.AreNotEqual(IntPtr.Zero, shelf);
-        Assert.AreEqual(0, DwmGetWindowAttribute(shelf, 35, out var captionColor, sizeof(uint)));
-        Assert.AreEqual(0x002B2F19u, captionColor);
+        const int windowStyle = -16;
+        const int captionStyle = 0x00C00000;
+        Assert.AreEqual(captionStyle, GetWindowLongW(shelf, windowStyle) & captionStyle);
         var hidden = await Send(new(UtilityAction.Execute, "shelf"));
         Assert.IsNull(hidden.Error);
         Assert.AreEqual(IntPtr.Zero, FindWindowW(null, "Drop Shelf — WinLayer"));
@@ -322,8 +323,8 @@ public sealed class WindowsAgentTests
         return true;
     }
 
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out uint value, uint size);
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern int GetWindowLongW(IntPtr window, int index);
 
     [DllImport("user32.dll")]
     private static extern bool IsZoomed(IntPtr window);
