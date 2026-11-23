@@ -111,7 +111,7 @@ export function NetworkPage({ status, data, run, busy }: HubPageProps) {
   return <NetworkReadings metrics={metrics} options={options} settings={<MonitorSettings label="Réglages du réseau">
     <HubForm compact tool="network" options={options} key={JSON.stringify(options)} run={run} busy={busy}>
       {(draft, patch) => <>
-        <div className="hub-form-grid">
+        <div className="hub-form-grid network-display-options">
         <Choice label="Interface réseau" value={draft.adapter}
           choices={[[ '', 'Automatique' ], ...(draft.adapter && !metrics?.adapters.some(adapter => adapter.id === draft.adapter)
             ? [[draft.adapter, 'Adaptateur indisponible'] as const] : []),

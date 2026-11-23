@@ -723,7 +723,9 @@ main, .hub-table-wrap, .hub-step-list {
 .monitor-settings > summary:hover, .monitor-settings[open] > summary { background: var(--accent-tint); }
 .hub-inline-settings .hub-form { padding: 14px 0 3px; border: 0; background: transparent; }
 
-.nav-group { display: grid; gap: 2px; }
+.nav-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.sidebar nav { overflow-x: hidden; }
+.nav-link span { min-width: 0; overflow-wrap: anywhere; }
 .nav-group + .nav-group { margin-top: 5px; }
 .nav-group-label { padding: 3px 12px 2px; font-size: 11px; font-weight: 750; color: var(--sidebar-text); }
 .utility-save {
@@ -752,7 +754,16 @@ main, .hub-table-wrap, .hub-step-list {
 .color-fields { display: grid; gap: 8px; }
 .color-fields > label { display: grid; grid-template-columns: 105px minmax(0, 1fr); align-items: center; }
 .color-fields > label > input:not([type="range"]) { padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--canvas); color: var(--ink); }
-.color-fields > label > input[type="range"] { accent-color: var(--accent); }
+.color-fields > label > input[type="range"] {
+  appearance: none; height: 20px; cursor: pointer; background: transparent;
+}
+.color-fields > label > input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; background: var(--accent-tint); border: 1px solid var(--line); border-radius: 20px;
+}
+.color-fields > label > input[type="range"]::-webkit-slider-thumb {
+  appearance: none; width: 14px; height: 14px; margin-top: -5px;
+  border-radius: 50%; border: 2px solid var(--surface); background: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+}
 .color-fields > .utility-launches { justify-content: flex-end; margin-top: 7px; }
 
 .hub-inline-settings { display: block; margin-block: 0; }
@@ -772,7 +783,7 @@ main, .hub-table-wrap, .hub-step-list {
   .network-content:has(> .monitor-settings[open]) > .network-readings { grid-column: 1; grid-row: 1; }
 }
 @media (max-height: 790px) {
-  .sidebar .nav-link { min-height: 30px; }
+  .sidebar .nav-link { min-height: 28px; }
   .nav-group + .nav-group { margin-top: 2px; }
 }
 
@@ -793,3 +804,7 @@ main, .hub-table-wrap, .hub-step-list {
 
 .preferences-form > .button { justify-self: start; }
 .preferences-form + .utilities-layout { margin-top: 18px; }
+
+@media (min-width: 471px) {
+  .network-display-options { grid-template-columns: minmax(0, 1fr) minmax(100px, .62fr); }
+}
